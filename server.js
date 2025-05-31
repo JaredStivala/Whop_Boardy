@@ -130,6 +130,7 @@ app.get('/webhook/whop', (req, res) => {
 app.post('/webhook/whop', async (req, res) => {
   try {
     console.log('🔔 App webhook received:', JSON.stringify(req.body, null, 2));
+    console.log('🔍 Headers:', JSON.stringify(req.headers, null, 2));
     
     const webhookData = req.body;
     const eventType = webhookData.action || webhookData.type;
@@ -150,15 +151,18 @@ app.post('/webhook/whop', async (req, res) => {
         break;
         
       case 'app.installed':
+      case 'app_installed':
         await handleAppInstalled(eventData);
         break;
         
       case 'app.uninstalled':
+      case 'app_uninstalled':
         await handleAppUninstalled(eventData);
         break;
         
       default:
         console.log(`ℹ️ Ignoring event type: ${eventType}`);
+        console.log('📋 Available data keys:', Object.keys(eventData || {}));
     }
 
     res.status(200).json({ 
@@ -186,6 +190,9 @@ async function handleAppMembershipValid(eventData, webhookData) {
     }
 
     console.log(`📝 Processing app member: ${userId} for company: ${companyId}`);
+
+    // Auto-register installation if it doesn't exist
+    await ensureInstallationExists(companyId, webhookData);
 
     // Get installation info for this company
     const installationResult = await pool.query(
@@ -258,6 +265,29 @@ async function handleAppMembershipValid(eventData, webhookData) {
 
   } catch (error) {
     console.error('❌ Error handling app membership valid:', error);
+  }
+}
+
+// Ensure installation exists (auto-register from webhook data)
+async function ensureInstallationExists(companyId, webhookData) {
+  try {
+    const existingInstallation = await pool.query(
+      'SELECT id FROM app_installations WHERE whop_company_id = $1',
+      [companyId]
+    );
+
+    if (existingInstallation.rows.length === 0) {
+      console.log(`🔧 Auto-registering installation for company: ${companyId}`);
+      
+      await pool.query(`
+        INSERT INTO app_installations (whop_company_id, installation_id, is_active)
+        VALUES ($1, $2, TRUE)
+      `, [companyId, `auto_${Date.now()}`]);
+      
+      console.log(`✅ Auto-registered installation for company: ${companyId}`);
+    }
+  } catch (error) {
+    console.error('❌ Error ensuring installation exists:', error);
   }
 }
 
@@ -338,6 +368,35 @@ async function handleAppUninstalled(eventData) {
 }
 
 // API Routes for the app
+
+// Manual app installation registration
+app.post('/api/register-installation', async (req, res) => {
+  try {
+    const { whop_company_id, company_name, access_token } = req.body;
+
+    if (!whop_company_id) {
+      return res.status(400).json({ error: 'whop_company_id is required' });
+    }
+
+    const result = await pool.query(`
+      INSERT INTO app_installations (whop_company_id, company_name, installation_id, access_token, is_active)
+      VALUES ($1, $2, $3, $4, TRUE)
+      ON CONFLICT (whop_company_id)
+      DO UPDATE SET
+        company_name = EXCLUDED.company_name,
+        access_token = EXCLUDED.access_token,
+        is_active = TRUE,
+        installed_at = CURRENT_TIMESTAMP
+      RETURNING *
+    `, [whop_company_id, company_name || 'Manual Install', `manual_${Date.now()}`, access_token]);
+
+    console.log(`✅ Manually registered installation for: ${whop_company_id}`);
+    res.json({ success: true, installation: result.rows[0] });
+  } catch (error) {
+    console.error('❌ Error registering installation:', error);
+    res.status(500).json({ error: 'Failed to register installation' });
+  }
+});
 
 // Get member directory for a company (used by the app UI)
 app.get('/api/directory/:companyId', async (req, res) => {
