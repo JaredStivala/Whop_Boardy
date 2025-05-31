@@ -58,7 +58,8 @@ async function handleMembershipValid(data, companyId) {
       userEmail,
       userName,
       membershipId,
-      companyId
+      companyId,
+      fullData: data
     });
 
     // Get company's API key if they have one stored
@@ -67,10 +68,12 @@ async function handleMembershipValid(data, companyId) {
       [companyId]
     );
 
-    let apiKey = null;
+    let apiKey = process.env.WHOP_API_KEY; // Default to environment variable
     if (companyResult.rows.length > 0 && companyResult.rows[0].api_key) {
       apiKey = companyResult.rows[0].api_key;
     }
+
+    console.log('🔑 Using API key:', apiKey ? 'Available' : 'Missing');
 
     // Fetch detailed membership data from Whop API
     const membershipData = await fetchWhopMembershipData(membershipId, apiKey);
@@ -85,9 +88,10 @@ async function handleMembershipValid(data, companyId) {
       // Combine both custom fields formats
       waitlistResponses = { ...customFields, ...customFieldsV2 };
       
-      console.log('Extracted waitlist responses:', waitlistResponses);
+      console.log('📝 Extracted waitlist responses:', waitlistResponses);
+      console.log('📊 Full membership data fields:', Object.keys(membershipData));
     } else {
-      console.log('Could not fetch membership data from Whop API');
+      console.log('⚠️ Could not fetch membership data from Whop API');
     }
 
     // Also check our local waitlist responses as backup
@@ -219,10 +223,22 @@ app.post('/webhook/whop', async (req, res) => {
     const signature = req.headers['x-whop-signature'];
     const payload = JSON.stringify(req.body);
     
-    // Get company info to verify webhook
-    const companyId = req.body.data?.company_id || req.body.company_id;
+    // Get company info from webhook - check multiple possible locations
+    let companyId = req.body.data?.company_id || 
+                    req.body.company_id || 
+                    req.body.data?.product?.company_id ||
+                    req.body.data?.membership?.company_id;
+    
+    // If not found, try to extract from product_id or other fields
+    if (!companyId && req.body.data?.product_id) {
+      // For your case, we know the company ID
+      companyId = 'jaredstivala';
+    }
+    
+    console.log('🏢 Extracted company ID:', companyId);
+    
     if (!companyId) {
-      console.log('❌ No company ID found in webhook');
+      console.log('❌ No company ID found in webhook data:', req.body);
       return res.status(400).json({ error: 'No company ID found' });
     }
 
@@ -414,6 +430,45 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development'
   });
+});
+
+// Debug endpoint to test webhook payload parsing
+app.post('/debug/webhook', (req, res) => {
+  console.log('🔍 Debug webhook payload:');
+  console.log('Headers:', req.headers);
+  console.log('Body:', JSON.stringify(req.body, null, 2));
+  
+  // Test company ID extraction
+  const companyId = req.body.data?.company_id || 
+                    req.body.company_id || 
+                    req.body.data?.product?.company_id ||
+                    req.body.data?.membership?.company_id;
+  
+  console.log('Extracted company ID:', companyId);
+  
+  res.json({
+    success: true,
+    extracted_company_id: companyId,
+    available_fields: Object.keys(req.body),
+    data_fields: req.body.data ? Object.keys(req.body.data) : null
+  });
+});
+
+// Manual test endpoint to add a member
+app.post('/test/add-member', async (req, res) => {
+  try {
+    const { companyId, userId, email, name, responses } = req.body;
+    
+    const result = await pool.query(`
+      INSERT INTO members (whop_company_id, whop_user_id, email, name, waitlist_responses, status)
+      VALUES ($1, $2, $3, $4, $5, 'active')
+      RETURNING *
+    `, [companyId, userId, email, name, JSON.stringify(responses || {})]);
+    
+    res.json({ success: true, member: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Serve the main directory page
