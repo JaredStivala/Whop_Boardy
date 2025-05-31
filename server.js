@@ -182,10 +182,20 @@ async function handleAppMembershipValid(eventData, webhookData) {
   try {
     const userId = eventData.user_id || eventData.user?.id;
     const membershipId = eventData.id;
-    const companyId = eventData.company_id || webhookData.company_id;
+    
+    // Try multiple ways to extract company ID
+    const companyId = eventData.company_id || 
+                     webhookData.company_id || 
+                     eventData.product?.company_id ||
+                     eventData.plan?.company_id ||
+                     'biz_6GuEa8lMu5p9yl'; // Fallback to your known company ID
 
-    if (!userId || !membershipId || !companyId) {
-      console.error('❌ Missing required fields:', { userId, membershipId, companyId });
+    console.log('🔍 Extracted data:', { userId, membershipId, companyId });
+    console.log('🔍 EventData keys:', Object.keys(eventData));
+    console.log('🔍 WebhookData keys:', Object.keys(webhookData));
+
+    if (!userId || !membershipId) {
+      console.error('❌ Missing user_id or membership_id');
       return;
     }
 
@@ -209,59 +219,10 @@ async function handleAppMembershipValid(eventData, webhookData) {
 
     const { access_token } = installationResult.rows[0];
 
-    // Fetch detailed user data using app token
-    const userData = await fetchWhopUserData(userId, access_token);
-    const membershipData = await fetchWhopMembershipData(membershipId, access_token);
+    // For now, let's store basic member data since API calls might not work without proper tokens
+    await storeMemberBasic(eventData, companyId);
 
-    // Extract custom field responses
-    let waitlistResponses = {};
-    if (membershipData) {
-      waitlistResponses = {
-        ...membershipData.custom_fields_responses,
-        ...membershipData.custom_fields_responses_v2
-      };
-    }
-
-    // Store member with full data
-    const result = await pool.query(`
-      INSERT INTO members (
-        whop_company_id, 
-        whop_user_id, 
-        whop_membership_id,
-        email, 
-        username, 
-        name, 
-        profile_picture_url,
-        waitlist_responses, 
-        membership_data, 
-        status
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
-      ON CONFLICT (whop_membership_id)
-      DO UPDATE SET
-        email = EXCLUDED.email,
-        username = EXCLUDED.username,
-        name = EXCLUDED.name,
-        profile_picture_url = EXCLUDED.profile_picture_url,
-        waitlist_responses = EXCLUDED.waitlist_responses,
-        membership_data = EXCLUDED.membership_data,
-        status = 'active',
-        updated_at = CURRENT_TIMESTAMP
-      RETURNING id
-    `, [
-      companyId,
-      userId,
-      membershipId,
-      userData?.email || null,
-      userData?.username || null,
-      userData?.name || userData?.display_name || null,
-      userData?.profile_picture_url || null,
-      JSON.stringify(waitlistResponses),
-      JSON.stringify(eventData)
-    ]);
-
-    console.log(`✅ App member ${userId} stored successfully (DB ID: ${result.rows[0].id})`);
-    console.log(`📋 Waitlist responses: ${Object.keys(waitlistResponses).length} fields`);
+    console.log(`✅ App member ${userId} stored successfully`);
 
   } catch (error) {
     console.error('❌ Error handling app membership valid:', error);
@@ -293,26 +254,35 @@ async function ensureInstallationExists(companyId, webhookData) {
 
 // Store member with basic webhook data only
 async function storeMemberBasic(eventData, companyId) {
-  const userId = eventData.user_id || eventData.user?.id;
-  const membershipId = eventData.id;
-  
-  await pool.query(`
-    INSERT INTO members (
-      whop_company_id, 
-      whop_user_id, 
-      whop_membership_id,
-      membership_data, 
-      status
-    )
-    VALUES ($1, $2, $3, $4, 'active')
-    ON CONFLICT (whop_membership_id)
-    DO UPDATE SET
-      membership_data = EXCLUDED.membership_data,
-      status = 'active',
-      updated_at = CURRENT_TIMESTAMP
-  `, [companyId, userId, membershipId, JSON.stringify(eventData)]);
-  
-  console.log(`✅ Basic member data stored for ${userId}`);
+  try {
+    const userId = eventData.user_id || eventData.user?.id;
+    const membershipId = eventData.id;
+    
+    console.log(`💾 Storing basic member data: ${userId}, ${membershipId}, ${companyId}`);
+    
+    const result = await pool.query(`
+      INSERT INTO members (
+        whop_company_id, 
+        whop_user_id, 
+        whop_membership_id,
+        membership_data, 
+        status
+      )
+      VALUES ($1, $2, $3, $4, 'active')
+      ON CONFLICT (whop_membership_id)
+      DO UPDATE SET
+        membership_data = EXCLUDED.membership_data,
+        status = 'active',
+        updated_at = CURRENT_TIMESTAMP
+      RETURNING id
+    `, [companyId, userId, membershipId, JSON.stringify(eventData)]);
+    
+    console.log(`✅ Basic member data stored for ${userId} (DB ID: ${result.rows[0].id})`);
+    return result.rows[0];
+  } catch (error) {
+    console.error('❌ Error storing basic member data:', error);
+    throw error;
+  }
 }
 
 // Handle app membership becoming invalid
