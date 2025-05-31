@@ -116,6 +116,16 @@ async function initializeDatabase() {
   }
 }
 
+// Webhook verification endpoint (for app installation)
+app.get('/webhook/whop', (req, res) => {
+  console.log('🔍 Webhook verification request received');
+  res.status(200).json({ 
+    status: 'ok', 
+    message: 'Webhook endpoint is active',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Enhanced webhook handler for Whop App
 app.post('/webhook/whop', async (req, res) => {
   try {
