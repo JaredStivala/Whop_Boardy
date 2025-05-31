@@ -185,58 +185,45 @@ async function handleAppMembershipValid(eventData, webhookData) {
   try {
     const userId = eventData.user_id || eventData.user?.id;
     const membershipId = eventData.id;
+    const companyId = eventData.page_id; // This is the actual company ID in the webhook!
 
-    console.log('🔍 Basic webhook data:', { userId, membershipId });
+    console.log('🔍 Basic webhook data:', { userId, membershipId, companyId });
 
     if (!userId || !membershipId) {
       console.error('❌ Missing user_id or membership_id');
       return;
     }
 
-    // CRITICAL: Fetch full membership details to get company_buyer_id and custom fields
-    console.log('🔄 Fetching full membership details from Whop API...');
-    
-    // Use your app's environment variable API key
-    const apiKey = process.env.WHOP_API_KEY;
-    if (!apiKey) {
-      console.error('❌ No WHOP_API_KEY environment variable set');
-      return;
-    }
-
-    const membershipData = await fetchWhopMembershipData(membershipId, apiKey);
-    if (!membershipData) {
-      console.error('❌ Failed to fetch membership data from Whop API');
-      return;
-    }
-
-    // Extract company ID from membership data
-    const companyId = membershipData.company_buyer_id;
-    console.log('✅ Found company ID:', companyId);
-
     if (!companyId) {
-      console.error('❌ No company_buyer_id in membership data');
+      console.error('❌ No company/page_id found in webhook');
       return;
     }
+
+    console.log('✅ Found company ID from page_id:', companyId);
 
     // Auto-register installation if it doesn't exist
-    await ensureInstallationExists(companyId, membershipData);
+    await ensureInstallationExists(companyId, eventData);
 
-    // Extract custom field responses from membership API response
+    // Extract custom field responses directly from webhook data
     let waitlistResponses = {};
-    if (membershipData.custom_field_responses && Array.isArray(membershipData.custom_field_responses)) {
-      membershipData.custom_field_responses.forEach(field => {
-        if (field.question && field.answer) {
-          waitlistResponses[field.question] = field.answer;
-        }
-      });
+    
+    // Check if custom_field_responses exists in webhook
+    if (eventData.custom_field_responses) {
+      console.log('📋 Raw custom field responses:', eventData.custom_field_responses);
+      
+      // If it's an array, process it
+      if (Array.isArray(eventData.custom_field_responses)) {
+        eventData.custom_field_responses.forEach(field => {
+          if (field.question && field.answer) {
+            waitlistResponses[field.question] = field.answer;
+          }
+        });
+      }
     }
 
     console.log('📋 Extracted waitlist responses:', waitlistResponses);
 
-    // Fetch user details
-    const userData = await fetchWhopUserData(userId, apiKey);
-
-    // Store member with full data
+    // Store member with webhook data (skip API call for now due to 403 error)
     const result = await pool.query(`
       INSERT INTO members (
         whop_company_id, 
@@ -253,10 +240,6 @@ async function handleAppMembershipValid(eventData, webhookData) {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
       ON CONFLICT (whop_membership_id)
       DO UPDATE SET
-        email = EXCLUDED.email,
-        username = EXCLUDED.username,
-        name = EXCLUDED.name,
-        profile_picture_url = EXCLUDED.profile_picture_url,
         waitlist_responses = EXCLUDED.waitlist_responses,
         membership_data = EXCLUDED.membership_data,
         status = 'active',
@@ -266,19 +249,53 @@ async function handleAppMembershipValid(eventData, webhookData) {
       companyId,
       userId,
       membershipId,
-      userData?.email || null,
-      userData?.username || null,
-      userData?.name || userData?.display_name || null,
-      userData?.profile_picture_url || null,
+      null, // Will get user details later
+      null, // Will get user details later  
+      null, // Will get user details later
+      null, // Will get user details later
       JSON.stringify(waitlistResponses),
-      JSON.stringify(membershipData)
+      JSON.stringify(eventData)
     ]);
 
     console.log(`✅ Member ${userId} stored successfully for company ${companyId} (DB ID: ${result.rows[0].id})`);
     console.log(`📋 Waitlist responses stored: ${Object.keys(waitlistResponses).length} fields`);
 
+    // Try to fetch user details (this might work even if membership API doesn't)
+    await tryFetchUserDetails(userId, companyId, result.rows[0].id);
+
   } catch (error) {
     console.error('❌ Error handling app membership valid:', error);
+  }
+}
+
+// Try to fetch and update user details separately
+async function tryFetchUserDetails(userId, companyId, memberId) {
+  try {
+    const apiKey = process.env.WHOP_API_KEY;
+    if (!apiKey) return;
+
+    console.log('🔄 Attempting to fetch user details...');
+    const userData = await fetchWhopUserData(userId, apiKey);
+    
+    if (userData) {
+      await pool.query(`
+        UPDATE members 
+        SET email = $1, username = $2, name = $3, profile_picture_url = $4, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $5
+      `, [
+        userData.email || null,
+        userData.username || null, 
+        userData.name || userData.display_name || null,
+        userData.profile_picture_url || null,
+        memberId
+      ]);
+      
+      console.log('✅ User details updated successfully');
+    } else {
+      console.log('⚠️ Could not fetch user details, but member stored with basic data');
+    }
+  } catch (error) {
+    console.log('⚠️ User details fetch failed, but member was stored:', error.message);
   }
 }
 
