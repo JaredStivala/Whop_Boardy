@@ -234,33 +234,69 @@ async function handleAppMembershipValid(eventData, webhookData) {
     // Ensure installation exists FIRST (this is critical)
     await ensureInstallationExists(companyId, eventData);
 
-    // Extract custom field responses from webhook data
+    // ENHANCED: Try to get custom field responses from Whop API
     let waitlistResponses = {};
     
-    // The custom_field_responses appears to be a Ruby ActiveRecord object
-    // Let's try different approaches to extract the data
-    console.log('📋 Raw custom field responses:', eventData.custom_field_responses);
-    console.log('📋 Type of custom field responses:', typeof eventData.custom_field_responses);
+    console.log('🔍 FULL WEBHOOK PAYLOAD ANALYSIS:');
+    console.log('📋 All webhook keys:', Object.keys(eventData));
     
-    // Try to extract meaningful data from the webhook payload
-    // Look for any fields that might contain form responses
-    const allKeys = Object.keys(eventData);
-    console.log('📋 All webhook data keys:', allKeys);
-    
-    // Check each field for potential custom data
-    allKeys.forEach(key => {
+    // Log all string fields that might contain custom data
+    Object.keys(eventData).forEach(key => {
       const value = eventData[key];
-      if (typeof value === 'string' && value.length > 0 && value.length < 1000) {
-        // Potential custom field response
-        if (key.includes('custom') || key.includes('field') || key.includes('response') || 
-            key.includes('question') || key.includes('answer') || key.includes('form')) {
+      console.log(`📝 ${key}:`, typeof value, value);
+      
+      // Look for any field that might be a form response
+      if (typeof value === 'string' && value.length > 0 && value.length < 500) {
+        if (key.toLowerCase().includes('custom') || 
+            key.toLowerCase().includes('field') || 
+            key.toLowerCase().includes('response') || 
+            key.toLowerCase().includes('form') ||
+            key.toLowerCase().includes('question') ||
+            key.toLowerCase().includes('answer')) {
           waitlistResponses[key] = value;
-          console.log(`📝 Found potential custom field: ${key} = ${value}`);
+          console.log(`✅ Found potential custom field: ${key} = ${value}`);
         }
       }
     });
 
-    console.log('📋 Extracted waitlist responses:', waitlistResponses);
+    // Try to fetch membership details from Whop API to get custom fields
+    if (process.env.WHOP_API_KEY) {
+      try {
+        console.log('🔍 Attempting to fetch membership details from Whop API...');
+        const membershipResponse = await fetch(`https://api.whop.com/api/v2/memberships/${membershipId}`, {
+          headers: {
+            'Authorization': `Bearer ${process.env.WHOP_API_KEY}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (membershipResponse.ok) {
+          const membershipData = await membershipResponse.json();
+          console.log('📋 Membership API data keys:', Object.keys(membershipData));
+          
+          // Look for custom field responses in the API response
+          if (membershipData.custom_field_responses) {
+            console.log('📋 API Custom field responses:', membershipData.custom_field_responses);
+            
+            if (Array.isArray(membershipData.custom_field_responses)) {
+              membershipData.custom_field_responses.forEach(field => {
+                if (field.custom_field && field.value) {
+                  const question = field.custom_field.label || field.custom_field.name || 'Question';
+                  waitlistResponses[question] = field.value;
+                  console.log(`✅ Extracted from API: ${question} = ${field.value}`);
+                }
+              });
+            }
+          }
+        } else {
+          console.log(`⚠️ Membership API failed: ${membershipResponse.status}`);
+        }
+      } catch (apiError) {
+        console.error('❌ Error fetching from Whop API:', apiError.message);
+      }
+    }
+
+    console.log('📋 Final extracted waitlist responses:', waitlistResponses);
 
     // Store member with webhook data (with proper error handling)
     try {
@@ -495,6 +531,110 @@ app.post('/api/register-installation', async (req, res) => {
   }
 });
 
+// Advanced debugging endpoint
+app.get('/debug/webhooks', async (req, res) => {
+  try {
+    // Get recent webhook logs from database if we stored them
+    const recentMembers = await pool.query(`
+      SELECT 
+        whop_membership_id,
+        whop_user_id,
+        waitlist_responses,
+        membership_data,
+        joined_at
+      FROM members 
+      ORDER BY joined_at DESC 
+      LIMIT 5
+    `);
+    
+    res.json({
+      success: true,
+      recent_members: recentMembers.rows.map(member => ({
+        membership_id: member.whop_membership_id,
+        user_id: member.whop_user_id,
+        waitlist_responses: member.waitlist_responses,
+        raw_webhook_keys: member.membership_data ? Object.keys(member.membership_data) : [],
+        joined_at: member.joined_at
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Enhanced member fetching with better custom field handling
+async function tryFetchUserDetails(userId, companyId, memberDbId) {
+  try {
+    if (!process.env.WHOP_API_KEY) {
+      console.log('⚠️ No WHOP_API_KEY, skipping user detail fetch');
+      return;
+    }
+
+    console.log(`🔍 Fetching user details for user: ${userId}`);
+    
+    // Try fetching user details
+    const userResponse = await fetch(`https://api.whop.com/api/v2/users/${userId}`, {
+      headers: {
+        'Authorization': `Bearer ${process.env.WHOP_API_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (userResponse.ok) {
+      const userData = await userResponse.json();
+      console.log('✅ User data fetched successfully');
+      console.log('📋 User data keys:', Object.keys(userData));
+      
+      // Update member with user details
+      await pool.query(`
+        UPDATE members 
+        SET email = $1, username = $2, name = $3, profile_picture_url = $4, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $5
+      `, [
+        userData.email || null,
+        userData.username || null, 
+        userData.name || null,
+        userData.profile_picture_url || null,
+        memberDbId
+      ]);
+      
+      console.log(`✅ User details updated for member ID: ${memberDbId}`);
+    } else {
+      console.log(`⚠️ User API failed: ${userResponse.status} ${userResponse.statusText}`);
+    }
+
+    // Also try to fetch all memberships for this company to see custom fields
+    console.log(`🔍 Fetching company memberships for company: ${companyId}`);
+    const membershipsResponse = await fetch(`https://api.whop.com/api/v2/memberships?company_id=${companyId}&limit=10`, {
+      headers: {
+        'Authorization': `Bearer ${process.env.WHOP_API_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (membershipsResponse.ok) {
+      const membershipsData = await membershipsResponse.json();
+      console.log('✅ Company memberships fetched');
+      console.log('📋 Found memberships:', membershipsData.data?.length || 0);
+      
+      // Look for custom field responses in any of the memberships
+      if (membershipsData.data) {
+        membershipsData.data.forEach((membership, index) => {
+          console.log(`📋 Membership ${index + 1} keys:`, Object.keys(membership));
+          if (membership.custom_field_responses) {
+            console.log(`📋 Membership ${index + 1} custom fields:`, membership.custom_field_responses);
+          }
+        });
+      }
+    } else {
+      console.log(`⚠️ Memberships API failed: ${membershipsResponse.status}`);
+    }
+
+  } catch (error) {
+    console.error('❌ Error fetching user details:', error.message);
+  }
+}
+
 // Debug endpoint to check database state
 app.get('/debug/database', async (req, res) => {
   try {
@@ -512,6 +652,99 @@ app.get('/debug/database', async (req, res) => {
     res.status(500).json({ 
       error: 'Database query failed', 
       details: error.message 
+    });
+  }
+});
+
+// Test endpoint to simulate webhook (for development)
+app.post('/test/webhook', express.json(), (req, res) => {
+  console.log('🧪 Test webhook received');
+  console.log('📋 Test payload:', JSON.stringify(req.body, null, 2));
+  
+  // Process as if it's a real webhook
+  if (req.body.action === 'membership.went_valid') {
+    handleAppMembershipValid(req.body.data, req.body);
+  }
+  
+  res.json({ 
+    success: true, 
+    message: 'Test webhook processed',
+    received_keys: Object.keys(req.body)
+  });
+});
+
+// Advanced logging for webhook analysis
+function logWebhookAnalysis(eventData) {
+  console.log('\n🔍 ===== DETAILED WEBHOOK ANALYSIS =====');
+  console.log('📅 Timestamp:', new Date().toISOString());
+  console.log('📋 Event Data Type:', typeof eventData);
+  console.log('📋 Event Data Keys:', Object.keys(eventData));
+  
+  // Analyze each field in detail
+  Object.entries(eventData).forEach(([key, value]) => {
+    console.log(`\n📝 Field: ${key}`);
+    console.log(`   Type: ${typeof value}`);
+    console.log(`   Value: ${JSON.stringify(value).substring(0, 200)}${JSON.stringify(value).length > 200 ? '...' : ''}`);
+    
+    // Special handling for objects that might contain custom fields
+    if (typeof value === 'object' && value !== null) {
+      console.log(`   Object Keys: ${Object.keys(value)}`);
+      
+      // Look for anything that might be custom field data
+      if (key.toLowerCase().includes('custom') || 
+          key.toLowerCase().includes('field') || 
+          key.toLowerCase().includes('response') ||
+          key.toLowerCase().includes('form')) {
+        console.log(`   🎯 POTENTIAL CUSTOM FIELD DATA!`);
+        console.log(`   Full Object: ${JSON.stringify(value, null, 2)}`);
+      }
+    }
+  });
+  
+  console.log('🔍 ===== END WEBHOOK ANALYSIS =====\n');
+}
+
+// Enhanced webhook handler with better analysis
+app.post('/webhook/whop', express.json({ limit: '10mb' }), async (req, res) => {
+  try {
+    console.log('📥 Whop webhook received');
+    
+    // Verify webhook signature if available
+    const signature = req.headers['x-whop-signature'];
+    if (signature) {
+      console.log('🔐 Webhook signature present:', signature.substring(0, 20) + '...');
+    }
+
+    const { action, data } = req.body;
+    console.log(`📋 Webhook action: ${action}`);
+
+    // Enhanced logging and analysis
+    if (data) {
+      logWebhookAnalysis(data);
+    }
+
+    // Handle different webhook events
+    if (action === 'membership.went_valid') {
+      console.log('✅ Processing app membership valid event');
+      await handleAppMembershipValid(data, req.body);
+    } else if (action === 'membership.created') {
+      console.log('✅ Processing membership created event');
+      await handleAppMembershipValid(data, req.body);
+    } else {
+      console.log(`ℹ️ Unhandled webhook action: ${action}`);
+    }
+
+    res.status(200).json({ 
+      received: true, 
+      action: action,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('💥 Webhook processing error:', error);
+    res.status(500).json({ 
+      error: 'Webhook processing failed',
+      message: error.message 
     });
   }
 });
