@@ -1,100 +1,25 @@
 {
-    "package.json": {
-      "name": "whop-member-directory",
-      "version": "1.0.0",
-      "description": "Production-ready Whop member directory system",
-      "main": "server.js",
-      "scripts": {
-        "start": "node server.js",
-        "dev": "nodemon server.js",
-        "setup-db": "node setup-database.js"
-      },
-      "dependencies": {
-        "express": "^4.18.2",
-        "cors": "^2.8.5",
-        "pg": "^8.11.0",
-        "dotenv": "^16.0.3",
-        "helmet": "^6.1.5",
-        "express-rate-limit": "^6.7.0"
-      },
-      "devDependencies": {
-        "nodemon": "^2.0.22"
-      },
-      "engines": {
-        "node": ">=16.0.0"
-      }
+    "name": "whop-member-directory",
+    "version": "1.0.0",
+    "description": "Production-ready Whop member directory system",
+    "main": "server.js",
+    "scripts": {
+      "start": "node server.js",
+      "dev": "nodemon server.js",
+      "setup-db": "node setup-database.js"
     },
-    ".env.example": {
-      "DATABASE_URL": "postgresql://username:password@localhost:5432/whop_directory",
-      "NODE_ENV": "production",
-      "PORT": "3000",
-      "BASE_URL": "https://your-domain.com"
+    "dependencies": {
+      "express": "^4.18.2",
+      "cors": "^2.8.5",
+      "pg": "^8.11.0",
+      "dotenv": "^16.0.3",
+      "helmet": "^6.1.5",
+      "express-rate-limit": "^6.7.0"
     },
-    "Dockerfile": "FROM node:18-alpine\n\nWORKDIR /app\n\nCOPY package*.json ./\nRUN npm ci --only=production\n\nCOPY . .\n\nEXPOSE 3000\n\nUSER node\n\nCMD [\"npm\", \"start\"]",
-    "railway.json": {
-      "build": {
-        "builder": "NIXPACKS"
-      },
-      "deploy": {
-        "startCommand": "npm start",
-        "healthcheckPath": "/health",
-        "healthcheckTimeout": 100,
-        "restartPolicyType": "ON_FAILURE",
-        "restartPolicyMaxRetries": 10
-      }
+    "devDependencies": {
+      "nodemon": "^2.0.22"
     },
-    "vercel.json": {
-      "version": 2,
-      "builds": [
-        {
-          "src": "server.js",
-          "use": "@vercel/node"
-        },
-        {
-          "src": "public/**",
-          "use": "@vercel/static"
-        }
-      ],
-      "routes": [
-        {
-          "src": "/webhook/(.*)",
-          "dest": "/server.js"
-        },
-        {
-          "src": "/api/(.*)",
-          "dest": "/server.js"
-        },
-        {
-          "src": "/(.*)",
-          "dest": "/public/$1"
-        }
-      ],
-      "env": {
-        "NODE_ENV": "production"
-      }
-    },
-    "render.yaml": {
-      "services": [
-        {
-          "type": "web",
-          "name": "whop-directory",
-          "env": "node",
-          "buildCommand": "npm install",
-          "startCommand": "npm start",
-          "healthCheckPath": "/health",
-          "envVars": [
-            {
-              "key": "NODE_ENV",
-              "value": "production"
-            }
-          ]
-        }
-      ],
-      "databases": [
-        {
-          "name": "whop-directory-db",
-          "plan": "starter"
-        }
-      ]
-    },
-    "README.md": "# Whop Member Directory System\n\n## Quick Setup Guide\n\n### 1. Deploy to Railway (Recommended - Easiest)\n\n1. Fork this repository to your GitHub\n2. Go to [Railway.app](https://railway.app)\n3. Click \"Deploy from GitHub repo\"\n4. Select your forked repository\n5. Railway will auto-deploy and provide:\n   - Database (PostgreSQL)\n   - Your app URL\n   - Environment variables\n\n### 2. Configure Your Whop Integration\n\n1. Go to your Railway app dashboard\n2. Copy your app URL (something like: `https://your-app-name.railway.app`)\n3. In Whop Developer Dashboard:\n   - Create new webhook\n   - URL: `https://your-app-name.railway.app/webhook/whop`\n   - Select events: `membership_went_valid`, `membership_went_invalid`\n4. Copy webhook secret from Whop\n\n### 3. Register Your Whop Group\n\nMake a POST request to register your group:\n\n```bash\ncurl -X POST https://your-app-name.railway.app/api/register-group \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"whop_company_id\": \"your_whop_company_id\",\n    \"group_name\": \"Your Community Name\",\n    \"webhook_secret\": \"your_webhook_secret_from_whop\"\n  }'\n```\n\n### 4. Embed Member Directory\n\nAdd this to your Whop community:\n\n```html\n<iframe \n  src=\"https://your-app-name.railway.app/directory.html?company=your_whop_company_id\" \n  width=\"100%\" \n  height=\"800px\" \n  frameborder=\"0\">\n</iframe>\n```\n\n## Alternative Deployment Options\n\n### Render.com\n1. Connect GitHub repo to Render\n2. Use `render.yaml` configuration\n3. Add PostgreSQL database\n\n### Vercel + Supabase\n1. Deploy to Vercel\n2. Create Supabase database\n3. Add DATABASE_URL to Vercel environment\n\n## Environment Variables\n\n```\nDATABASE_URL=postgresql://...\nNODE_ENV=production\nPORT=3000\nBASE_URL=https://your-domain.com\n```\n\n## Webhook Events\n\nYour system will automatically:\n- Add members when `membership_went_valid` fires\n- Remove members when `membership_went_invalid` fires\n- Store waitlist data for approved members\n\n## Waitlist Data Collection\n\nSince Whop doesn't provide waitlist data via webhook, you have options:\n\n1. **Manual Export**: Export waitlist CSV and upload via API\n2. **Form Integration**: Create custom waitlist form that posts to your API\n3. **Whop Integration**: Wait for Whop to add waitlist webhook events\n\n## API Endpoints\n\n- `POST /webhook/whop` - Whop webhook handler\n- `POST /api/register-group` - Register new Whop group\n- `GET /api/directory/:companyId` - Get member directory\n- `POST /api/waitlist/:companyId` - Add waitlist responses\n- `GET /health` - Health check\n\n## Security Features\n\n- Webhook signature verification\n- Rate limiting\n- SQL injection protection\n- XSS protection\n- CORS configuration\n\n## Customization\n\nEach group can customize:\n- Community name and branding\n- Custom questions displayed in directory\n- Member profile fields\n- Directory styling\n\n## Support\n\nFor issues or questions:\n1. Check the logs in your hosting platform\n2. Test webhook delivery in Whop dashboard\n3. Verify database connections\n4. Check API responses with curl/Postman\n\n## Scaling\n\nThis system is designed to handle:\n- Multiple Whop communities\n- Thousands of members per community\n- Real-time updates\n- High webhook volume\n\nFor larger scale, consider:\n- Database connection pooling\n- Redis caching\n- CDN for static assets\n- Load balancing\n\n## Next Steps\n\n1. Deploy the system\n2. Test with your Whop community\n3. Add waitlist data collection\n4. Customize directory appearance\n5. Add advanced features (search, filtering, etc.)\n\n## Future Enhancements\n\n- LLM-powered member matching\n- Advanced search and filtering\n- Member messaging system\n- Analytics dashboard\n- Mobile app integration\n- Custom member profiles\n- Integration with other platforms"
+    "engines": {
+      "node": ">=16.0.0"
+    }
+}

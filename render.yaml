@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: whop-directory
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+databases:
+  - name: whop-directory-db
+    plan: starter 
