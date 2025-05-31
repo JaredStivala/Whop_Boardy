@@ -1,4 +1,4 @@
-// server.js - Complete fixed version
+// server.js - Complete version with enhanced debugging
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
@@ -21,56 +21,56 @@ app.use(express.static('public'));
 
 // Enhanced Whop API helper with full debugging
 async function fetchWhopMembershipData(membershipId, apiKey = null) {
-    try {
-      const authKey = apiKey || process.env.WHOP_API_KEY;
-      if (!authKey) {
-        throw new Error('No API key available');
-      }
-  
-      console.log(`🔍 Fetching membership ${membershipId} from Whop API...`);
-      
-      const response = await fetch(`https://api.whop.com/api/v2/memberships/${membershipId}`, {
-        headers: {
-          'Authorization': authKey.startsWith('Bearer ') ? authKey : `Bearer ${authKey}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      console.log(`📊 Whop API Response Status: ${response.status}`);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`❌ Whop API error: ${response.status} - ${errorText}`);
-        throw new Error(`Whop API error: ${response.status} - ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      
-      // FULL DEBUG OUTPUT
-      console.log('🔍 FULL WHOP API RESPONSE:');
-      console.log(JSON.stringify(data, null, 2));
-      
-      // Check all possible locations for custom fields
-      console.log('🔍 CHECKING FOR CUSTOM FIELDS:');
-      console.log('custom_fields_responses:', data.custom_fields_responses);
-      console.log('custom_fields_responses_v2:', data.custom_fields_responses_v2);
-      console.log('custom_fields:', data.custom_fields);
-      console.log('fields:', data.fields);
-      console.log('responses:', data.responses);
-      console.log('form_responses:', data.form_responses);
-      console.log('checkout_session:', data.checkout_session);
-      
-      // Check if there's a user object with responses
-      if (data.user) {
-        console.log('user object found:', Object.keys(data.user));
-      }
-      
-      return data;
-    } catch (error) {
-      console.error('❌ Error fetching Whop membership data:', error);
-      return null;
+  try {
+    const authKey = apiKey || process.env.WHOP_API_KEY;
+    if (!authKey) {
+      throw new Error('No API key available');
     }
+
+    console.log(`🔍 Fetching membership ${membershipId} from Whop API...`);
+    
+    const response = await fetch(`https://api.whop.com/api/v2/memberships/${membershipId}`, {
+      headers: {
+        'Authorization': authKey.startsWith('Bearer ') ? authKey : `Bearer ${authKey}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    console.log(`📊 Whop API Response Status: ${response.status}`);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`❌ Whop API error: ${response.status} - ${errorText}`);
+      throw new Error(`Whop API error: ${response.status} - ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    
+    // FULL DEBUG OUTPUT
+    console.log('🔍 FULL WHOP API RESPONSE:');
+    console.log(JSON.stringify(data, null, 2));
+    
+    // Check all possible locations for custom fields
+    console.log('🔍 CHECKING FOR CUSTOM FIELDS:');
+    console.log('custom_fields_responses:', data.custom_fields_responses);
+    console.log('custom_fields_responses_v2:', data.custom_fields_responses_v2);
+    console.log('custom_fields:', data.custom_fields);
+    console.log('fields:', data.fields);
+    console.log('responses:', data.responses);
+    console.log('form_responses:', data.form_responses);
+    console.log('checkout_session:', data.checkout_session);
+    
+    // Check if there's a user object with responses
+    if (data.user) {
+      console.log('user object found:', Object.keys(data.user));
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('❌ Error fetching Whop membership data:', error);
+    return null;
   }
+}
 
 // Initialize database tables
 async function initializeDatabase() {
@@ -131,144 +131,177 @@ async function initializeDatabase() {
   }
 }
 
-// Fixed webhook signature verification
-function verifyWebhookSignature(payload, signature, secret) {
-  if (!signature || !secret) {
-    console.log('⚠️ Skipping signature verification (no signature or secret)');
-    return true; // Skip verification if no signature/secret
-  }
-  
-  try {
-    // Remove 'sha256=' prefix if present
-    const cleanSignature = signature.replace('sha256=', '');
-    
-    const expectedSignature = crypto
-      .createHmac('sha256', secret)
-      .update(payload, 'utf8')
-      .digest('hex');
-    
-    console.log('🔐 Signature verification:', {
-      received: cleanSignature.length,
-      expected: expectedSignature.length,
-      match: cleanSignature === expectedSignature
-    });
-    
-    return cleanSignature === expectedSignature;
-  } catch (error) {
-    console.error('❌ Signature verification error:', error.message);
-    return false;
-  }
-}
-
-// Main webhook endpoint for Whop events - NO SIGNATURE VERIFICATION
+// Enhanced webhook handler with better debugging
 app.post('/webhook/whop', async (req, res) => {
-    console.log('🔔 Webhook received at', new Date().toISOString());
-    console.log('Headers:', req.headers);
-    console.log('Full body:', JSON.stringify(req.body, null, 2));
-  
-    try {
-      // For Jared's setup, always use 'jaredstivala' as company ID
-      const companyId = 'jaredstivala';
-      
-      console.log(`📍 Processing webhook for company: ${companyId}`);
-  
-      // Get group info (but skip signature verification)
-      const groupResult = await pool.query(
-        'SELECT group_name FROM groups WHERE whop_company_id = $1',
-        [companyId]
-      );
-  
-      if (groupResult.rows.length === 0) {
-        console.log(`❌ Company ${companyId} not registered`);
-        return res.status(404).json({ error: 'Company not registered' });
-      }
-  
-      const groupName = groupResult.rows[0].group_name;
-      console.log(`✅ Found registered group: ${groupName}`);
-  
-      // SKIP SIGNATURE VERIFICATION FOR NOW
-      console.log('⚠️ Skipping webhook signature verification');
-  
-      const eventType = req.body.type || req.body.action;
-      const eventData = req.body.data;
-  
-      console.log(`🎯 Processing event: ${eventType}`);
-  
-      if (eventType === 'membership_went_valid' || eventType === 'membership.went_valid') {
-        const userId = eventData.user_id || eventData.user?.id;
-        const userEmail = eventData.user?.email;
-        const userName = eventData.user?.username || eventData.user?.name;
-        const membershipId = eventData.id;
-  
-        console.log('📝 Member details:', { userId, userEmail, userName, membershipId });
-  
-        // Try to fetch from Whop API
-        let membershipData = null;
-        let waitlistResponses = {};
-  
-        if (process.env.WHOP_API_KEY && membershipId) {
-          try {
-            console.log('🔑 Fetching from Whop API...');
-            membershipData = await fetchWhopMembershipData(membershipId);
-            
-            if (membershipData) {
-              console.log('✅ Got membership data from API');
-              console.log('Available fields:', Object.keys(membershipData));
-              
-              // Extract custom fields
-              const customFields = membershipData.custom_fields_responses || {};
-              const customFieldsV2 = membershipData.custom_fields_responses_v2 || {};
-              waitlistResponses = { ...customFields, ...customFieldsV2 };
-              
-              console.log('📋 Waitlist responses found:', Object.keys(waitlistResponses).length > 0 ? waitlistResponses : 'None');
-            }
-          } catch (error) {
-            console.log('❌ Error calling Whop API:', error.message);
-          }
-        } else {
-          console.log('⚠️ No API key or membership ID available');
-        }
-  
-        // Add member to database
-        try {
-          const result = await pool.query(`
-            INSERT INTO members (whop_company_id, whop_user_id, email, name, waitlist_responses, membership_data, status)
-            VALUES ($1, $2, $3, $4, $5, $6, 'active')
-            ON CONFLICT (whop_company_id, whop_user_id)
-            DO UPDATE SET
-              email = EXCLUDED.email,
-              name = EXCLUDED.name,
-              waitlist_responses = EXCLUDED.waitlist_responses,
-              membership_data = EXCLUDED.membership_data,
-              status = 'active',
-              joined_at = CURRENT_TIMESTAMP
-            RETURNING id
-          `, [companyId, userId, userEmail, userName, JSON.stringify(waitlistResponses), JSON.stringify(eventData)]);
-  
-          console.log(`🎉 SUCCESS! Added member ${userId} to directory (DB ID: ${result.rows[0].id})`);
-          console.log(`📊 Waitlist responses stored: ${Object.keys(waitlistResponses).length} fields`);
-          
-          res.status(200).json({ 
-            success: true, 
-            message: 'Member added successfully',
-            memberId: result.rows[0].id,
-            waitlistResponsesFound: Object.keys(waitlistResponses).length > 0,
-            waitlistResponses: waitlistResponses
-          });
-        } catch (dbError) {
-          console.error('💥 Database error:', dbError);
-          res.status(500).json({ error: 'Database error', details: dbError.message });
-        }
-      } else {
-        console.log(`ℹ️ Ignoring event type: ${eventType}`);
-        res.status(200).json({ success: true, message: 'Event ignored' });
-      }
-  
-    } catch (error) {
-      console.error('💥 Webhook processing error:', error);
-      res.status(500).json({ error: 'Internal server error', details: error.message });
+  console.log('🔔 Webhook received at', new Date().toISOString());
+  console.log('Headers:', req.headers);
+  console.log('Full body:', JSON.stringify(req.body, null, 2));
+
+  try {
+    const companyId = 'jaredstivala';
+    console.log(`📍 Processing webhook for company: ${companyId}`);
+
+    // Get group info
+    const groupResult = await pool.query(
+      'SELECT group_name FROM groups WHERE whop_company_id = $1',
+      [companyId]
+    );
+
+    if (groupResult.rows.length === 0) {
+      console.log(`❌ Company ${companyId} not registered`);
+      return res.status(404).json({ error: 'Company not registered' });
     }
-  });
+
+    const groupName = groupResult.rows[0].group_name;
+    console.log(`✅ Found registered group: ${groupName}`);
+    console.log('⚠️ Skipping webhook signature verification');
+
+    const eventType = req.body.type || req.body.action;
+    const eventData = req.body.data;
+
+    console.log(`🎯 Processing event: ${eventType}`);
+
+    if (eventType === 'membership_went_valid' || eventType === 'membership.went_valid') {
+      const userId = eventData.user_id || eventData.user?.id;
+      const userEmail = eventData.user?.email;
+      const userName = eventData.user?.username || eventData.user?.name;
+      const membershipId = eventData.id;
+
+      console.log('📝 Member details:', { userId, userEmail, userName, membershipId });
+
+      // CHECK WEBHOOK PAYLOAD FOR CUSTOM FIELDS FIRST
+      console.log('🔍 CHECKING WEBHOOK PAYLOAD FOR CUSTOM FIELDS:');
+      console.log('eventData keys:', Object.keys(eventData));
+      
+      // Check various possible locations in webhook
+      const possibleCustomFieldKeys = [
+        'custom_fields_responses',
+        'custom_fields_responses_v2', 
+        'custom_fields',
+        'fields',
+        'responses',
+        'form_responses',
+        'checkout_session',
+        'user_responses',
+        'metadata'
+      ];
+      
+      let waitlistResponses = {};
+      
+      possibleCustomFieldKeys.forEach(key => {
+        if (eventData[key]) {
+          console.log(`✅ Found ${key}:`, eventData[key]);
+          waitlistResponses = { ...waitlistResponses, ...eventData[key] };
+        }
+      });
+
+      // Also check nested in user object
+      if (eventData.user) {
+        console.log('🔍 Checking user object:', Object.keys(eventData.user));
+        possibleCustomFieldKeys.forEach(key => {
+          if (eventData.user[key]) {
+            console.log(`✅ Found user.${key}:`, eventData.user[key]);
+            waitlistResponses = { ...waitlistResponses, ...eventData.user[key] };
+          }
+        });
+      }
+
+      console.log('📋 Waitlist responses from webhook:', waitlistResponses);
+
+      // Try to fetch from Whop API if no responses found in webhook
+      let membershipData = null;
+      
+      if (Object.keys(waitlistResponses).length === 0 && process.env.WHOP_API_KEY && membershipId) {
+        try {
+          console.log('🔑 No responses in webhook, trying Whop API...');
+          membershipData = await fetchWhopMembershipData(membershipId);
+          
+          if (membershipData) {
+            console.log('✅ Got membership data from API');
+            
+            // Extract custom fields from API response
+            const customFields = membershipData.custom_fields_responses || {};
+            const customFieldsV2 = membershipData.custom_fields_responses_v2 || {};
+            const otherFields = membershipData.responses || {};
+            const formFields = membershipData.form_responses || {};
+            
+            waitlistResponses = { 
+              ...customFields, 
+              ...customFieldsV2, 
+              ...otherFields,
+              ...formFields
+            };
+            
+            console.log('📋 Waitlist responses from API:', waitlistResponses);
+          }
+        } catch (error) {
+          console.log('❌ Error calling Whop API:', error.message);
+        }
+      }
+
+      // If still no responses, let's see what other data we have
+      if (Object.keys(waitlistResponses).length === 0) {
+        console.log('⚠️ NO CUSTOM FIELD RESPONSES FOUND ANYWHERE');
+        console.log('🔍 Available webhook data keys:', Object.keys(eventData));
+        console.log('🔍 Full eventData for analysis:', JSON.stringify(eventData, null, 2));
+      }
+
+      // Add member to database
+      try {
+        const result = await pool.query(`
+          INSERT INTO members (whop_company_id, whop_user_id, email, name, waitlist_responses, membership_data, status)
+          VALUES ($1, $2, $3, $4, $5, $6, 'active')
+          ON CONFLICT (whop_company_id, whop_user_id)
+          DO UPDATE SET
+            email = EXCLUDED.email,
+            name = EXCLUDED.name,
+            waitlist_responses = EXCLUDED.waitlist_responses,
+            membership_data = EXCLUDED.membership_data,
+            status = 'active',
+            joined_at = CURRENT_TIMESTAMP
+          RETURNING id
+        `, [companyId, userId, userEmail, userName, JSON.stringify(waitlistResponses), JSON.stringify(eventData)]);
+
+        console.log(`🎉 SUCCESS! Added member ${userId} to directory (DB ID: ${result.rows[0].id})`);
+        console.log(`📊 Waitlist responses stored: ${Object.keys(waitlistResponses).length} fields`);
+        
+        if (Object.keys(waitlistResponses).length > 0) {
+          console.log('✅ Custom field responses found and stored:', waitlistResponses);
+        } else {
+          console.log('❌ No custom field responses found - this might indicate:');
+          console.log('   1. User didn\'t fill out custom fields');
+          console.log('   2. Custom fields are stored differently in Whop');
+          console.log('   3. API permissions issue');
+          console.log('   4. Different webhook event needed');
+        }
+        
+        res.status(200).json({ 
+          success: true, 
+          message: 'Member added successfully',
+          memberId: result.rows[0].id,
+          waitlistResponsesFound: Object.keys(waitlistResponses).length > 0,
+          waitlistResponses: waitlistResponses,
+          availableWebhookKeys: Object.keys(eventData),
+          debugInfo: {
+            hasCustomFields: Object.keys(waitlistResponses).length > 0,
+            webhookKeys: Object.keys(eventData),
+            userKeys: eventData.user ? Object.keys(eventData.user) : null
+          }
+        });
+      } catch (dbError) {
+        console.error('💥 Database error:', dbError);
+        res.status(500).json({ error: 'Database error', details: dbError.message });
+      }
+    } else {
+      console.log(`ℹ️ Ignoring event type: ${eventType}`);
+      res.status(200).json({ success: true, message: 'Event ignored' });
+    }
+
+  } catch (error) {
+    console.error('💥 Webhook processing error:', error);
+    res.status(500).json({ error: 'Internal server error', details: error.message });
+  }
+});
 
 // Handle when membership becomes invalid
 async function handleMembershipInvalid(data, companyId) {
