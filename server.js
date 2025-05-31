@@ -69,6 +69,47 @@ async function fetchWhopMembershipData(membershipId, installationToken) {
 async function initializeDatabase() {
   const client = await pool.connect();
   try {
+    // First, drop and recreate tables to fix schema issues
+    console.log('🔄 Checking and fixing database schema...');
+    
+    // Check if members table exists and has correct columns
+    const tableCheck = await client.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'members' AND table_schema = 'public'
+    `);
+    
+    const existingColumns = tableCheck.rows.map(row => row.column_name);
+    console.log('📋 Existing members table columns:', existingColumns);
+    
+    if (!existingColumns.includes('whop_membership_id')) {
+      console.log('🔧 Fixing members table schema...');
+      
+      // Drop and recreate members table with correct schema
+      await client.query('DROP TABLE IF EXISTS members CASCADE');
+      
+      await client.query(`
+        CREATE TABLE members (
+          id SERIAL PRIMARY KEY,
+          whop_company_id VARCHAR(255) NOT NULL,
+          whop_user_id VARCHAR(255) NOT NULL,
+          whop_membership_id VARCHAR(255) UNIQUE NOT NULL,
+          email VARCHAR(255),
+          username VARCHAR(255),
+          name VARCHAR(255),
+          profile_picture_url TEXT,
+          waitlist_responses JSONB DEFAULT '{}',
+          membership_data JSONB DEFAULT '{}',
+          status VARCHAR(50) DEFAULT 'active',
+          joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(whop_company_id, whop_user_id)
+        )
+      `);
+      
+      console.log('✅ Members table recreated with correct schema');
+    }
+
     // App installations table
     await client.query(`
       CREATE TABLE IF NOT EXISTS app_installations (
@@ -82,36 +123,20 @@ async function initializeDatabase() {
       )
     `);
 
-    // Members table for the app
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS members (
-        id SERIAL PRIMARY KEY,
-        whop_company_id VARCHAR(255) NOT NULL,
-        whop_user_id VARCHAR(255) NOT NULL,
-        whop_membership_id VARCHAR(255) UNIQUE NOT NULL,
-        email VARCHAR(255),
-        username VARCHAR(255),
-        name VARCHAR(255),
-        profile_picture_url TEXT,
-        waitlist_responses JSONB DEFAULT '{}',
-        membership_data JSONB DEFAULT '{}',
-        status VARCHAR(50) DEFAULT 'active',
-        joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(whop_company_id, whop_user_id)
-      )
-    `);
-
     // Create indexes
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_members_company_id ON members(whop_company_id)
     `);
     
     await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_members_membership_id ON members(whop_membership_id)
+    `);
+    
+    await client.query(`
       CREATE INDEX IF NOT EXISTS idx_installations_company_id ON app_installations(whop_company_id)
     `);
 
-    console.log('✅ Database initialized successfully');
+    console.log('✅ Database schema verified and fixed');
   } catch (error) {
     console.error('❌ Database initialization error:', error);
   } finally {
@@ -201,67 +226,101 @@ async function handleAppMembershipValid(eventData, webhookData) {
 
     console.log('✅ Found company ID from page_id:', companyId);
 
-    // Auto-register installation if it doesn't exist
+    // Ensure installation exists FIRST (this is critical)
     await ensureInstallationExists(companyId, eventData);
 
-    // Extract custom field responses directly from webhook data
+    // Extract custom field responses from webhook data
     let waitlistResponses = {};
     
-    // Check if custom_field_responses exists in webhook
-    if (eventData.custom_field_responses) {
-      console.log('📋 Raw custom field responses:', eventData.custom_field_responses);
-      
-      // If it's an array, process it
-      if (Array.isArray(eventData.custom_field_responses)) {
-        eventData.custom_field_responses.forEach(field => {
-          if (field.question && field.answer) {
-            waitlistResponses[field.question] = field.answer;
-          }
-        });
+    // The custom_field_responses appears to be a Ruby ActiveRecord object
+    // Let's try different approaches to extract the data
+    console.log('📋 Raw custom field responses:', eventData.custom_field_responses);
+    console.log('📋 Type of custom field responses:', typeof eventData.custom_field_responses);
+    
+    // Try to extract meaningful data from the webhook payload
+    // Look for any fields that might contain form responses
+    const allKeys = Object.keys(eventData);
+    console.log('📋 All webhook data keys:', allKeys);
+    
+    // Check each field for potential custom data
+    allKeys.forEach(key => {
+      const value = eventData[key];
+      if (typeof value === 'string' && value.length > 0 && value.length < 1000) {
+        // Potential custom field response
+        if (key.includes('custom') || key.includes('field') || key.includes('response') || 
+            key.includes('question') || key.includes('answer') || key.includes('form')) {
+          waitlistResponses[key] = value;
+          console.log(`📝 Found potential custom field: ${key} = ${value}`);
+        }
       }
-    }
+    });
 
     console.log('📋 Extracted waitlist responses:', waitlistResponses);
 
-    // Store member with webhook data (skip API call for now due to 403 error)
-    const result = await pool.query(`
-      INSERT INTO members (
-        whop_company_id, 
-        whop_user_id, 
-        whop_membership_id,
-        email, 
-        username, 
-        name, 
-        profile_picture_url,
-        waitlist_responses, 
-        membership_data, 
-        status
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
-      ON CONFLICT (whop_membership_id)
-      DO UPDATE SET
-        waitlist_responses = EXCLUDED.waitlist_responses,
-        membership_data = EXCLUDED.membership_data,
-        status = 'active',
-        updated_at = CURRENT_TIMESTAMP
-      RETURNING id
-    `, [
-      companyId,
-      userId,
-      membershipId,
-      null, // Will get user details later
-      null, // Will get user details later  
-      null, // Will get user details later
-      null, // Will get user details later
-      JSON.stringify(waitlistResponses),
-      JSON.stringify(eventData)
-    ]);
+    // Store member with webhook data (with proper error handling)
+    try {
+      console.log('💾 Attempting to store member...');
+      
+      const result = await pool.query(`
+        INSERT INTO members (
+          whop_company_id, 
+          whop_user_id, 
+          whop_membership_id,
+          waitlist_responses, 
+          membership_data, 
+          status
+        )
+        VALUES ($1, $2, $3, $4, $5, 'active')
+        ON CONFLICT (whop_membership_id)
+        DO UPDATE SET
+          waitlist_responses = EXCLUDED.waitlist_responses,
+          membership_data = EXCLUDED.membership_data,
+          status = 'active',
+          updated_at = CURRENT_TIMESTAMP
+        RETURNING id
+      `, [
+        companyId,
+        userId,
+        membershipId,
+        JSON.stringify(waitlistResponses),
+        JSON.stringify(eventData)
+      ]);
 
-    console.log(`✅ Member ${userId} stored successfully for company ${companyId} (DB ID: ${result.rows[0].id})`);
-    console.log(`📋 Waitlist responses stored: ${Object.keys(waitlistResponses).length} fields`);
+      console.log(`✅ Member ${userId} stored successfully for company ${companyId} (DB ID: ${result.rows[0].id})`);
+      console.log(`📋 Waitlist responses stored: ${Object.keys(waitlistResponses).length} fields`);
 
-    // Try to fetch user details (this might work even if membership API doesn't)
-    await tryFetchUserDetails(userId, companyId, result.rows[0].id);
+      // Try to fetch user details (this might work even if membership API doesn't)
+      await tryFetchUserDetails(userId, companyId, result.rows[0].id);
+
+    } catch (dbError) {
+      console.error('💥 Database error when storing member:', dbError);
+      console.error('📋 Data being inserted:', {
+        companyId,
+        userId, 
+        membershipId,
+        waitlistResponses,
+        eventDataKeys: Object.keys(eventData)
+      });
+      
+      // Try a simpler insert without JSONB fields
+      try {
+        console.log('🔄 Trying simplified member insert...');
+        const simpleResult = await pool.query(`
+          INSERT INTO members (whop_company_id, whop_user_id, whop_membership_id, status)
+          VALUES ($1, $2, $3, 'active')
+          ON CONFLICT (whop_membership_id) DO NOTHING
+          RETURNING id
+        `, [companyId, userId, membershipId]);
+        
+        if (simpleResult.rows.length > 0) {
+          console.log(`✅ Member stored with simplified data (DB ID: ${simpleResult.rows[0].id})`);
+        } else {
+          console.log('ℹ️ Member already exists, skipping insert');
+        }
+      } catch (simpleError) {
+        console.error('💥 Even simplified insert failed:', simpleError);
+      }
+    }
 
   } catch (error) {
     console.error('❌ Error handling app membership valid:', error);
@@ -302,6 +361,8 @@ async function tryFetchUserDetails(userId, companyId, memberId) {
 // Ensure installation exists (auto-register from membership data)
 async function ensureInstallationExists(companyId, membershipData) {
   try {
+    console.log(`🔧 Checking installation for company: ${companyId}`);
+    
     const existingInstallation = await pool.query(
       'SELECT id FROM app_installations WHERE whop_company_id = $1',
       [companyId]
@@ -310,15 +371,31 @@ async function ensureInstallationExists(companyId, membershipData) {
     if (existingInstallation.rows.length === 0) {
       console.log(`🔧 Auto-registering installation for company: ${companyId}`);
       
-      await pool.query(`
+      const result = await pool.query(`
         INSERT INTO app_installations (whop_company_id, company_name, installation_id, is_active)
         VALUES ($1, $2, $3, TRUE)
+        RETURNING id
       `, [companyId, `Company ${companyId}`, `auto_${Date.now()}`]);
       
-      console.log(`✅ Auto-registered installation for company: ${companyId}`);
+      console.log(`✅ Auto-registered installation for company: ${companyId} (ID: ${result.rows[0].id})`);
+    } else {
+      console.log(`✅ Installation already exists for company: ${companyId}`);
     }
   } catch (error) {
     console.error('❌ Error ensuring installation exists:', error);
+    
+    // Try a simpler insert without the foreign key constraint issues
+    try {
+      console.log('🔄 Trying simplified installation insert...');
+      await pool.query(`
+        INSERT INTO app_installations (whop_company_id, installation_id, is_active)
+        VALUES ($1, $2, TRUE)
+        ON CONFLICT (whop_company_id) DO NOTHING
+      `, [companyId, `auto_${Date.now()}`]);
+      console.log('✅ Simplified installation insert completed');
+    } catch (simpleError) {
+      console.error('💥 Even simplified installation insert failed:', simpleError);
+    }
   }
 }
 
@@ -410,6 +487,27 @@ app.post('/api/register-installation', async (req, res) => {
   } catch (error) {
     console.error('❌ Error registering installation:', error);
     res.status(500).json({ error: 'Failed to register installation' });
+  }
+});
+
+// Debug endpoint to check database state
+app.get('/debug/database', async (req, res) => {
+  try {
+    const installationsResult = await pool.query('SELECT * FROM app_installations ORDER BY installed_at DESC LIMIT 5');
+    const membersResult = await pool.query('SELECT * FROM members ORDER BY joined_at DESC LIMIT 5');
+    
+    res.json({
+      success: true,
+      installations: installationsResult.rows,
+      members: membersResult.rows,
+      installationsCount: installationsResult.rows.length,
+      membersCount: membersResult.rows.length
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      error: 'Database query failed', 
+      details: error.message 
+    });
   }
 });
 
