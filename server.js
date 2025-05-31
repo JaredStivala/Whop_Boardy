@@ -1,4 +1,4 @@
-// server.js - Main Express Server
+// server.js - Enhanced with Whop API integration
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
@@ -18,6 +18,92 @@ const pool = new Pool({
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
+
+// Whop API helper function
+async function fetchWhopMembershipData(membershipId) {
+  try {
+    const response = await fetch(`https://api.whop.com/api/v2/memberships/${membershipId}`, {
+      headers: {
+        'Authorization': process.env.WHOP_API_KEY,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Whop API error: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching Whop membership data:', error);
+    return null;
+  }
+}
+
+// Enhanced webhook handler with Whop API integration
+async function handleMembershipValid(data, companyId) {
+  try {
+    const userId = data.user_id || data.user?.id;
+    const userEmail = data.user?.email;
+    const userName = data.user?.username || data.user?.name;
+    const membershipId = data.id;
+
+    console.log(`Processing membership approval for user ${userId}, membership ${membershipId}`);
+
+    // Fetch detailed membership data from Whop API
+    const membershipData = await fetchWhopMembershipData(membershipId);
+    
+    let waitlistResponses = {};
+    
+    if (membershipData) {
+      // Extract custom fields (waitlist responses) from Whop API
+      const customFields = membershipData.custom_fields_responses || {};
+      const customFieldsV2 = membershipData.custom_fields_responses_v2 || {};
+      
+      // Combine both custom fields formats
+      waitlistResponses = { ...customFields, ...customFieldsV2 };
+      
+      console.log('Extracted waitlist responses:', waitlistResponses);
+    }
+
+    // Also check our local waitlist responses as backup
+    const waitlistResult = await pool.query(
+      'SELECT * FROM waitlist_responses WHERE whop_company_id = $1 AND (user_id = $2 OR user_email = $3) ORDER BY submitted_at DESC LIMIT 1',
+      [companyId, userId, userEmail]
+    );
+
+    // Use Whop API data if available, otherwise fall back to local data
+    if (Object.keys(waitlistResponses).length === 0 && waitlistResult.rows.length > 0) {
+      waitlistResponses = waitlistResult.rows[0].responses || {};
+    }
+
+    // Insert or update member in directory
+    await pool.query(`
+      INSERT INTO members (whop_company_id, whop_user_id, email, name, waitlist_responses, membership_data, status)
+      VALUES ($1, $2, $3, $4, $5, $6, 'active')
+      ON CONFLICT (whop_company_id, whop_user_id)
+      DO UPDATE SET
+        email = EXCLUDED.email,
+        name = EXCLUDED.name,
+        waitlist_responses = EXCLUDED.waitlist_responses,
+        membership_data = EXCLUDED.membership_data,
+        status = 'active',
+        joined_at = CURRENT_TIMESTAMP
+    `, [companyId, userId, userEmail, userName, JSON.stringify(waitlistResponses), JSON.stringify(data)]);
+
+    // Update waitlist status if we have local data
+    if (waitlistResult.rows.length > 0) {
+      await pool.query(
+        'UPDATE waitlist_responses SET status = $1 WHERE id = $2',
+        ['approved', waitlistResult.rows[0].id]
+      );
+    }
+
+    console.log(`Successfully added member ${userId} to directory with waitlist responses:`, waitlistResponses);
+  } catch (error) {
+    console.error('Error handling membership_went_valid:', error);
+  }
+}
 
 // Initialize database tables
 async function initializeDatabase() {
@@ -146,49 +232,6 @@ app.post('/webhook/whop', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
-
-// Handle when membership becomes valid (approved from waitlist)
-async function handleMembershipValid(data, companyId) {
-  try {
-    const userId = data.user_id || data.user?.id;
-    const userEmail = data.user?.email;
-    const userName = data.user?.username || data.user?.name;
-
-    // Check if we have waitlist data for this user
-    const waitlistResult = await pool.query(
-      'SELECT * FROM waitlist_responses WHERE whop_company_id = $1 AND (user_id = $2 OR user_email = $3) ORDER BY submitted_at DESC LIMIT 1',
-      [companyId, userId, userEmail]
-    );
-
-    const waitlistData = waitlistResult.rows[0]?.responses || {};
-
-    // Insert or update member in directory
-    await pool.query(`
-      INSERT INTO members (whop_company_id, whop_user_id, email, name, waitlist_responses, membership_data, status)
-      VALUES ($1, $2, $3, $4, $5, $6, 'active')
-      ON CONFLICT (whop_company_id, whop_user_id)
-      DO UPDATE SET
-        email = EXCLUDED.email,
-        name = EXCLUDED.name,
-        waitlist_responses = EXCLUDED.waitlist_responses,
-        membership_data = EXCLUDED.membership_data,
-        status = 'active',
-        joined_at = CURRENT_TIMESTAMP
-    `, [companyId, userId, userEmail, userName, JSON.stringify(waitlistData), JSON.stringify(data)]);
-
-    // Update waitlist status
-    if (waitlistResult.rows.length > 0) {
-      await pool.query(
-        'UPDATE waitlist_responses SET status = $1 WHERE id = $2',
-        ['approved', waitlistResult.rows[0].id]
-      );
-    }
-
-    console.log(`Added member ${userId} to directory for company ${companyId}`);
-  } catch (error) {
-    console.error('Error handling membership_went_valid:', error);
-  }
-}
 
 // Handle when membership becomes invalid
 async function handleMembershipInvalid(data, companyId) {
