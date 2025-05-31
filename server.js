@@ -210,32 +210,24 @@ app.post('/webhook/whop', async (req, res) => {
 
       // Try to fetch from Whop API if no responses found in webhook
       let membershipData = null;
+      const checkoutId = eventData.checkout_id;
       
-      if (Object.keys(waitlistResponses).length === 0 && process.env.WHOP_API_KEY && membershipId) {
+      if (process.env.WHOP_API_KEY && membershipId) {
         try {
-          console.log('🔑 No responses in webhook, trying Whop API...');
-          membershipData = await fetchWhopMembershipData(membershipId);
+          console.log('🔑 Trying enhanced Whop API calls...');
+          const apiResult = await fetchWhopMembershipData(membershipId, checkoutId);
           
-          if (membershipData) {
-            console.log('✅ Got membership data from API');
+          if (apiResult) {
+            membershipData = apiResult.membershipData;
+            const apiCustomFields = apiResult.customFieldResponses || {};
             
-            // Extract custom fields from API response
-            const customFields = membershipData.custom_fields_responses || {};
-            const customFieldsV2 = membershipData.custom_fields_responses_v2 || {};
-            const otherFields = membershipData.responses || {};
-            const formFields = membershipData.form_responses || {};
+            // Merge with any responses found in webhook
+            waitlistResponses = { ...waitlistResponses, ...apiCustomFields };
             
-            waitlistResponses = { 
-              ...customFields, 
-              ...customFieldsV2, 
-              ...otherFields,
-              ...formFields
-            };
-            
-            console.log('📋 Waitlist responses from API:', waitlistResponses);
+            console.log('📋 Final waitlist responses (webhook + API):', waitlistResponses);
           }
         } catch (error) {
-          console.log('❌ Error calling Whop API:', error.message);
+          console.log('❌ Error calling enhanced Whop API:', error.message);
         }
       }
 
