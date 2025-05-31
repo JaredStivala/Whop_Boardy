@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Member Directory</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f8fafc;
+            color: #1e293b;
+            line-height: 1.6;
+        }
+
+        .directory-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 40px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 16px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin: 30px 0;
+            flex-wrap: wrap;
+        }
+
+        .stat-item {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px 25px;
+            border-radius: 12px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 700;
+            display: block;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+
+        .search-filter {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 15px 20px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .members-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 25px;
+            margin-bottom: 40px;
+        }
+
+        .member-card {
+            background: white;
+            border-radius: 16px;
+            padding: 25px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+            border: 1px solid #f1f5f9;
+        }
+
+        .member-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15);
+        }
+
+        .member-avatar {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 15px;
+        }
+
+        .member-name {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #1e293b;
+        }
+
+        .member-email {
+            color: #64748b;
+            margin-bottom: 15px;
+            font-size: 0.9rem;
+        }
+
+        .member-details {
+            border-top: 1px solid #f1f5f9;
+            padding-top: 15px;
+        }
+
+        .detail-item {
+            margin-bottom: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .detail-label {
+            font-weight: 600;
+            color: #374151;
+            min-width: 80px;
+        }
+
+        .detail-value {
+            color: #6b7280;
+            flex: 1;
+        }
+
+        .joined-date {
+            font-size: 0.8rem;
+            color: #9ca3af;
+            text-align: right;
+            margin-top: 15px;
+            font-style: italic;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+            font-size: 1.1rem;
+            color: #64748b;
+        }
+
+        .error {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #dc2626;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .no-members {
+            text-align: center;
+            padding: 60px 20px;
+            color: #64748b;
+        }
+
+        .no-members h3 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .directory-container {
+                padding: 15px;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .members-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .stats {
+                gap: 15px;
+            }
+
+            .stat-item {
+                padding: 10px 20px;
+            }
+        }
+
+        /* Embeddable styles */
+        .embed-mode {
+            padding: 0;
+            max-width: none;
+        }
+
+        .embed-mode .header {
+            margin-bottom: 20px;
+            padding: 20px;
+        }
+
+        .embed-mode .header h1 {
+            font-size: 1.8rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="directory-container">
+        <div class="header">
+            <h1 id="groupName">Member Directory</h1>
+            <p>Connect with fellow community members</p>
+            <div class="stats">
+                <div class="stat-item">
+                    <span class="stat-number" id="totalMembers">-</span>
+                    <span class="stat-label">Total Members</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number" id="newThisMonth">-</span>
+                    <span class="stat-label">New This Month</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="search-filter">
+            <input 
+                type="text" 
+                class="search-input" 
+                placeholder="Search members by name, email, or responses..."
+                id="searchInput"
+            >
+        </div>
+
+        <div id="loadingState" class="loading">
+            Loading members...
+        </div>
+
+        <div id="errorState" class="error" style="display: none;">
+            Failed to load members. Please try again later.
+        </div>
+
+        <div id="noMembersState" class="no-members" style="display: none;">
+            <h3>No members found</h3>
+            <p>Be the first to join this community!</p>
+        </div>
+
+        <div id="membersGrid" class="members-grid" style="display: none;">
+        </div>
+    </div>
+
+    <script>
+        class MemberDirectory {
+            constructor() {
+                this.members = [];
+                this.filteredMembers = [];
+                this.companyId = this.getCompanyIdFromUrl();
+                this.apiBaseUrl = this.getApiBaseUrl();
+                
+                this.init();
+            }
+
+            getCompanyIdFromUrl() {
+                const urlParams = new URLSearchParams(window.location.search);
+                return urlParams.get('company') || 'demo';
+            }
+
+            getApiBaseUrl() {
+                // Auto-detect API base URL based on current domain
+                const currentDomain = window.location.origin;
+                return currentDomain.includes('localhost') ? 'http://localhost:3000' : currentDomain;
+            }
+
+            async init() {
+                await this.loadGroupConfig();
+                await this.loadMembers();
+                this.setupEventListeners();
+            }
+
+            async loadGroupConfig() {
+                try {
+                    const response = await fetch(`${this.apiBaseUrl}/api/group/${this.companyId}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        document.getElementById('groupName').textContent = 
+                            data.group.group_name + ' Directory';
+                    }
+                } catch (error) {
+                    console.error('Error loading group config:', error);
+                }
+            }
+
+            async loadMembers() {
+                try {
+                    const response = await fetch(`${this.apiBaseUrl}/api/directory/${this.companyId}`);
+                    
+                    if (!response.ok) {
+                        throw new Error('Failed to fetch members');
+                    }
+
+                    const data = await response.json();
+                    this.members = data.members || [];
+                    this.filteredMembers = [...this.members];
+                    
+                    this.updateStats();
+                    this.renderMembers();
+                    this.showContent();
+                    
+                } catch (error) {
+                    console.error('Error loading members:', error);
+                    this.showError();
+                }
+            }
+
+            updateStats() {
+                const totalMembers = this.members.length;
+                const now = new Date();
+                const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
+                
+                const newThisMonth = this.members.filter(member => 
+                    new Date(member.joined_at) > thirtyDaysAgo
+                ).length;
+
+                document.getElementById('totalMembers').textContent = totalMembers;
+                document.getElementById('newThisMonth').textContent = newThisMonth;
+            }
+
+            renderMembers() {
+                const grid = document.getElementById('membersGrid');
+                
+                if (this.filteredMembers.length === 0) {
+                    this.showNoMembers();
+                    return;
+                }
+
+                grid.innerHTML = this.filteredMembers.map(member => this.createMemberCard(member)).join('');
+            }
+
+            createMemberCard(member) {
+                const name = member.name || 'Anonymous Member';
+                const email = member.email || 'No email provided';
+                const avatar = name.charAt(0).toUpperCase();
+                const joinedDate = new Date(member.joined_at).toLocaleDateString();
+                
+                // Parse waitlist responses
+                const responses = member.waitlist_responses || {};
+                const responseItems = Object.entries(responses)
+                    .filter(([key, value]) => value && value.toString().trim())
+                    .map(([key, value]) => `
+                        <div class="detail-item">
+                            <span class="detail-label">${this.formatLabel(key)}:</span>
+                            <span class="detail-value">${this.escapeHtml(value.toString())}</span>
+                        </div>
+                    `).join('');
+
+                return `
+                    <div class="member-card">
+                        <div class="member-avatar">${avatar}</div>
+                        <div class="member-name">${this.escapeHtml(name)}</div>
+                        <div class="member-email">${this.escapeHtml(email)}</div>
+                        
+                        ${responseItems ? `
+                            <div class="member-details">
+                                ${responseItems}
+                            </div>
+                        ` : ''}
+                        
+                        <div class="joined-date">Joined ${joinedDate}</div>
+                    </div>
+                `;
+            }
+
+            formatLabel(key) {
+                return key.replace(/_/g, ' ')
+                         .replace(/\b\w/g, l => l.toUpperCase());
+            }
+
+            escapeHtml(unsafe) {
+                return unsafe
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            }
+
+            setupEventListeners() {
+                const searchInput = document.getElementById('searchInput');
+                searchInput.addEventListener('input', (e) => {
+                    this.filterMembers(e.target.value);
+                });
+            }
+
+            filterMembers(searchTerm) {
+                const term = searchTerm.toLowerCase().trim();
+                
+                if (!term) {
+                    this.filteredMembers = [...this.members];
+                } else {
+                    this.filteredMembers = this.members.filter(member => {
+                        const name = (member.name || '').toLowerCase();
+                        const email = (member.email || '').toLowerCase();
+                        const responses = JSON.stringify(member.waitlist_responses || {}).toLowerCase();
+                        
+                        return name.includes(term) || 
+                               email.includes(term) || 
+                               responses.includes(term);
+                    });
+                }
+                
+                this.renderMembers();
+            }
+
+            showContent() {
+                document.getElementById('loadingState').style.display = 'none';
+                document.getElementById('errorState').style.display = 'none';
+                document.getElementById('noMembersState').style.display = 'none';
+                document.getElementById('membersGrid').style.display = 'grid';
+            }
+
+            showError() {
+                document.getElementById('loadingState').style.display = 'none';
+                document.getElementById('membersGrid').style.display = 'none';
+                document.getElementById('noMembersState').style.display = 'none';
+                document.getElementById('errorState').style.display = 'block';
+            }
+
+            showNoMembers() {
+                document.getElementById('loadingState').style.display = 'none';
+                document.getElementById('membersGrid').style.display = 'none';
+                document.getElementById('errorState').style.display = 'none';
+                document.getElementById('noMembersState').style.display = 'block';
+            }
+        }
+
+        // Initialize the directory when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new MemberDirectory();
+        });
+
+        // Auto-refresh every 5 minutes to keep data current
+        setInterval(() => {
+            if (window.memberDirectory) {
+                window.memberDirectory.loadMembers();
+            }
+        }, 5 * 60 * 1000);
+    </script>
+</body>
+</html>
