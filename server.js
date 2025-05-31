@@ -86,7 +86,7 @@ function verifyWebhookSignature(payload, signature, secret) {
 async function initializeDatabase() {
   const client = await pool.connect();
   try {
-    // Groups table
+    // Groups table first
     await client.query(`
       CREATE TABLE IF NOT EXISTS groups (
         id SERIAL PRIMARY KEY,
@@ -98,7 +98,7 @@ async function initializeDatabase() {
       )
     `);
 
-    // Members table with complete user data
+    // Members table (removed problematic foreign key for now)
     await client.query(`
       CREATE TABLE IF NOT EXISTS members (
         id SERIAL PRIMARY KEY,
@@ -114,9 +114,17 @@ async function initializeDatabase() {
         status VARCHAR(50) DEFAULT 'active',
         joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (whop_company_id) REFERENCES groups(whop_company_id),
         UNIQUE(whop_company_id, whop_user_id)
       )
+    `);
+
+    // Create indexes for performance
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_members_company_id ON members(whop_company_id)
+    `);
+    
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_members_user_id ON members(whop_user_id)
     `);
 
     console.log('✅ Database initialized successfully');
