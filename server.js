@@ -69,25 +69,33 @@ async function fetchWhopMembershipData(membershipId, installationToken) {
 async function initializeDatabase() {
   const client = await pool.connect();
   try {
-    // First, drop and recreate tables to fix schema issues
-    console.log('🔄 Checking and fixing database schema...');
+    // Simplified database initialization to reduce memory usage
+    console.log('🔄 Initializing database...');
     
-    // Check if members table exists and has correct columns
-    const tableCheck = await client.query(`
-      SELECT column_name 
-      FROM information_schema.columns 
-      WHERE table_name = 'members' AND table_schema = 'public'
+    // App installations table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS app_installations (
+        id SERIAL PRIMARY KEY,
+        whop_company_id VARCHAR(255) UNIQUE NOT NULL,
+        company_name VARCHAR(255),
+        installation_id VARCHAR(255) UNIQUE NOT NULL,
+        access_token TEXT,
+        installed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        is_active BOOLEAN DEFAULT TRUE
+      )
+    `);
+
+    // Members table - simpler approach, just recreate if needed
+    const tableExists = await client.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'members'
+      )
     `);
     
-    const existingColumns = tableCheck.rows.map(row => row.column_name);
-    console.log('📋 Existing members table columns:', existingColumns);
-    
-    if (!existingColumns.includes('whop_membership_id')) {
-      console.log('🔧 Fixing members table schema...');
-      
-      // Drop and recreate members table with correct schema
-      await client.query('DROP TABLE IF EXISTS members CASCADE');
-      
+    if (!tableExists.rows[0].exists) {
+      console.log('🔧 Creating members table...');
       await client.query(`
         CREATE TABLE members (
           id SERIAL PRIMARY KEY,
@@ -106,39 +114,36 @@ async function initializeDatabase() {
           UNIQUE(whop_company_id, whop_user_id)
         )
       `);
+    } else {
+      // Check if whop_membership_id column exists
+      const columnExists = await client.query(`
+        SELECT column_name FROM information_schema.columns 
+        WHERE table_name = 'members' AND column_name = 'whop_membership_id'
+      `);
       
-      console.log('✅ Members table recreated with correct schema');
+      if (columnExists.rows.length === 0) {
+        console.log('🔧 Adding missing whop_membership_id column...');
+        await client.query(`
+          ALTER TABLE members 
+          ADD COLUMN whop_membership_id VARCHAR(255) UNIQUE
+        `);
+        await client.query(`
+          UPDATE members 
+          SET whop_membership_id = 'mem_' || id || '_' || extract(epoch from now())
+          WHERE whop_membership_id IS NULL
+        `);
+      }
     }
 
-    // App installations table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS app_installations (
-        id SERIAL PRIMARY KEY,
-        whop_company_id VARCHAR(255) UNIQUE NOT NULL,
-        company_name VARCHAR(255),
-        installation_id VARCHAR(255) UNIQUE NOT NULL,
-        access_token TEXT,
-        installed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        is_active BOOLEAN DEFAULT TRUE
-      )
-    `);
-
-    // Create indexes
+    // Essential indexes only
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_members_company_id ON members(whop_company_id)
     `);
-    
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_members_membership_id ON members(whop_membership_id)
-    `);
-    
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_installations_company_id ON app_installations(whop_company_id)
-    `);
 
-    console.log('✅ Database schema verified and fixed');
+    console.log('✅ Database initialized successfully');
   } catch (error) {
     console.error('❌ Database initialization error:', error);
+    throw error; // Re-throw to handle in main function
   } finally {
     client.release();
   }
@@ -603,7 +608,7 @@ app.get('/', (req, res) => {
 
 // Initialize database and start server
 initializeDatabase().then(() => {
-  app.listen(PORT, () => {
+  app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Whop App server running on port ${PORT}`);
     console.log(`📱 App webhook endpoint: ${process.env.BASE_URL || 'http://localhost:' + PORT}/webhook/whop`);
     console.log(`🌐 Directory URL: ${process.env.BASE_URL || 'http://localhost:' + PORT}/directory.html?company=COMPANY_ID`);
@@ -615,7 +620,17 @@ initializeDatabase().then(() => {
     } else {
       console.log('✅ WHOP_API_KEY configured');
     }
+    
+    // Send keep-alive signal to Railway
+    if (process.env.NODE_ENV === 'production') {
+      setInterval(() => {
+        console.log('💓 Server heartbeat');
+      }, 30000); // Every 30 seconds
+    }
   });
+}).catch(error => {
+  console.error('💥 Failed to initialize database:', error);
+  process.exit(1);
 });
 
 module.exports = app;
