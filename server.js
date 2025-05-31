@@ -1,4 +1,4 @@
-// server.js - Corrected implementation
+// server.js - Whop App Implementation
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
@@ -19,18 +19,19 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// Whop API helper functions
-async function fetchWhopUserData(userId, apiKey) {
+// Whop API helper functions using app authentication
+async function fetchWhopUserData(userId, installationToken) {
   try {
     const response = await fetch(`https://api.whop.com/api/v2/users/${userId}`, {
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${installationToken}`,
         'Content-Type': 'application/json'
       }
     });
     
     if (!response.ok) {
-      throw new Error(`Whop User API error: ${response.status}`);
+      console.log(`User API error: ${response.status}`);
+      return null;
     }
     
     return await response.json();
@@ -40,17 +41,18 @@ async function fetchWhopUserData(userId, apiKey) {
   }
 }
 
-async function fetchWhopMembershipData(membershipId, apiKey) {
+async function fetchWhopMembershipData(membershipId, installationToken) {
   try {
     const response = await fetch(`https://api.whop.com/api/v2/memberships/${membershipId}`, {
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${installationToken}`,
         'Content-Type': 'application/json'
       }
     });
     
     if (!response.ok) {
-      throw new Error(`Whop Membership API error: ${response.status}`);
+      console.log(`Membership API error: ${response.status}`);
+      return null;
     }
     
     return await response.json();
@@ -60,45 +62,24 @@ async function fetchWhopMembershipData(membershipId, apiKey) {
   }
 }
 
-// Extract company ID from webhook payload
-function extractCompanyId(webhookData) {
-  return webhookData.data?.company_id || 
-         webhookData.company_id || 
-         webhookData.data?.product?.company_id ||
-         webhookData.data?.membership?.company_id;
-}
-
-// Verify webhook signature
-function verifyWebhookSignature(payload, signature, secret) {
-  if (!signature || !secret) return false;
-  
-  const hmac = crypto.createHmac('sha256', secret);
-  hmac.update(payload);
-  const computedSignature = hmac.digest('hex');
-  
-  return crypto.timingSafeEqual(
-    Buffer.from(signature.replace('sha256=', ''), 'hex'),
-    Buffer.from(computedSignature, 'hex')
-  );
-}
-
-// Initialize database tables
+// Initialize database tables for app
 async function initializeDatabase() {
   const client = await pool.connect();
   try {
-    // Groups table first
+    // App installations table
     await client.query(`
-      CREATE TABLE IF NOT EXISTS groups (
+      CREATE TABLE IF NOT EXISTS app_installations (
         id SERIAL PRIMARY KEY,
         whop_company_id VARCHAR(255) UNIQUE NOT NULL,
-        group_name VARCHAR(255) NOT NULL,
-        webhook_secret VARCHAR(255),
-        api_key VARCHAR(512),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        company_name VARCHAR(255),
+        installation_id VARCHAR(255) UNIQUE NOT NULL,
+        access_token TEXT,
+        installed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        is_active BOOLEAN DEFAULT TRUE
       )
     `);
 
-    // Members table (removed problematic foreign key for now)
+    // Members table for the app
     await client.query(`
       CREATE TABLE IF NOT EXISTS members (
         id SERIAL PRIMARY KEY,
@@ -118,13 +99,13 @@ async function initializeDatabase() {
       )
     `);
 
-    // Create indexes for performance
+    // Create indexes
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_members_company_id ON members(whop_company_id)
     `);
     
     await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_members_user_id ON members(whop_user_id)
+      CREATE INDEX IF NOT EXISTS idx_installations_company_id ON app_installations(whop_company_id)
     `);
 
     console.log('✅ Database initialized successfully');
@@ -135,199 +116,234 @@ async function initializeDatabase() {
   }
 }
 
-// Enhanced webhook handler
+// Enhanced webhook handler for Whop App
 app.post('/webhook/whop', async (req, res) => {
   try {
-    const webhookData = req.body;
-    const companyId = extractCompanyId(webhookData);
+    console.log('🔔 App webhook received:', JSON.stringify(req.body, null, 2));
     
-    if (!companyId) {
-      console.error('❌ No company ID found in webhook payload');
-      return res.status(400).json({ error: 'Company ID required' });
-    }
-
-    console.log(`📍 Processing webhook for company: ${companyId}`);
-
-    // Get group configuration
-    const groupResult = await pool.query(
-      'SELECT group_name, webhook_secret, api_key FROM groups WHERE whop_company_id = $1',
-      [companyId]
-    );
-
-    if (groupResult.rows.length === 0) {
-      console.log(`❌ Company ${companyId} not registered`);
-      return res.status(404).json({ error: 'Company not registered' });
-    }
-
-    const { group_name, webhook_secret, api_key } = groupResult.rows[0];
-
-    // Verify webhook signature (skip if no secret configured)
-    if (webhook_secret) {
-      const signature = req.headers['x-whop-signature'] || req.headers['whop-signature'];
-      const payload = JSON.stringify(req.body);
-      
-      if (!verifyWebhookSignature(payload, signature, webhook_secret)) {
-        console.error('❌ Invalid webhook signature');
-        return res.status(401).json({ error: 'Invalid signature' });
-      }
-    }
-
+    const webhookData = req.body;
     const eventType = webhookData.action || webhookData.type;
     const eventData = webhookData.data;
 
-    console.log(`🎯 Processing event: ${eventType}`);
+    console.log(`🎯 Processing app event: ${eventType}`);
 
-    if (eventType === 'membership.went_valid' || eventType === 'membership_went_valid') {
-      await handleMembershipValid(eventData, companyId, api_key);
-      
-      res.status(200).json({ 
-        success: true, 
-        message: 'Member processed successfully',
-        company: group_name
-      });
-      
-    } else if (eventType === 'membership.went_invalid' || eventType === 'membership_went_invalid') {
-      await handleMembershipInvalid(eventData, companyId);
-      
-      res.status(200).json({ 
-        success: true, 
-        message: 'Member deactivated successfully' 
-      });
-      
-    } else {
-      console.log(`ℹ️ Ignoring event type: ${eventType}`);
-      res.status(200).json({ success: true, message: 'Event ignored' });
+    // Handle different app events
+    switch (eventType) {
+      case 'app_membership.went_valid':
+      case 'membership.went_valid':
+        await handleAppMembershipValid(eventData, webhookData);
+        break;
+        
+      case 'app_membership.went_invalid':
+      case 'membership.went_invalid':
+        await handleAppMembershipInvalid(eventData, webhookData);
+        break;
+        
+      case 'app.installed':
+        await handleAppInstalled(eventData);
+        break;
+        
+      case 'app.uninstalled':
+        await handleAppUninstalled(eventData);
+        break;
+        
+      default:
+        console.log(`ℹ️ Ignoring event type: ${eventType}`);
     }
 
+    res.status(200).json({ 
+      success: true, 
+      message: 'App webhook processed successfully',
+      eventType 
+    });
+
   } catch (error) {
-    console.error('💥 Webhook processing error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('💥 App webhook processing error:', error);
+    res.status(500).json({ error: 'Internal server error', details: error.message });
   }
 });
 
-// Handle membership becoming valid
-async function handleMembershipValid(eventData, companyId, apiKey) {
+// Handle app membership becoming valid
+async function handleAppMembershipValid(eventData, webhookData) {
+  try {
+    const userId = eventData.user_id || eventData.user?.id;
+    const membershipId = eventData.id;
+    const companyId = eventData.company_id || webhookData.company_id;
+
+    if (!userId || !membershipId || !companyId) {
+      console.error('❌ Missing required fields:', { userId, membershipId, companyId });
+      return;
+    }
+
+    console.log(`📝 Processing app member: ${userId} for company: ${companyId}`);
+
+    // Get installation info for this company
+    const installationResult = await pool.query(
+      'SELECT access_token, company_name FROM app_installations WHERE whop_company_id = $1 AND is_active = TRUE',
+      [companyId]
+    );
+
+    if (installationResult.rows.length === 0) {
+      console.log(`⚠️ No active installation found for company: ${companyId}`);
+      // Still store the member, but without API data
+      await storeMemberBasic(eventData, companyId);
+      return;
+    }
+
+    const { access_token } = installationResult.rows[0];
+
+    // Fetch detailed user data using app token
+    const userData = await fetchWhopUserData(userId, access_token);
+    const membershipData = await fetchWhopMembershipData(membershipId, access_token);
+
+    // Extract custom field responses
+    let waitlistResponses = {};
+    if (membershipData) {
+      waitlistResponses = {
+        ...membershipData.custom_fields_responses,
+        ...membershipData.custom_fields_responses_v2
+      };
+    }
+
+    // Store member with full data
+    const result = await pool.query(`
+      INSERT INTO members (
+        whop_company_id, 
+        whop_user_id, 
+        whop_membership_id,
+        email, 
+        username, 
+        name, 
+        profile_picture_url,
+        waitlist_responses, 
+        membership_data, 
+        status
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
+      ON CONFLICT (whop_membership_id)
+      DO UPDATE SET
+        email = EXCLUDED.email,
+        username = EXCLUDED.username,
+        name = EXCLUDED.name,
+        profile_picture_url = EXCLUDED.profile_picture_url,
+        waitlist_responses = EXCLUDED.waitlist_responses,
+        membership_data = EXCLUDED.membership_data,
+        status = 'active',
+        updated_at = CURRENT_TIMESTAMP
+      RETURNING id
+    `, [
+      companyId,
+      userId,
+      membershipId,
+      userData?.email || null,
+      userData?.username || null,
+      userData?.name || userData?.display_name || null,
+      userData?.profile_picture_url || null,
+      JSON.stringify(waitlistResponses),
+      JSON.stringify(eventData)
+    ]);
+
+    console.log(`✅ App member ${userId} stored successfully (DB ID: ${result.rows[0].id})`);
+    console.log(`📋 Waitlist responses: ${Object.keys(waitlistResponses).length} fields`);
+
+  } catch (error) {
+    console.error('❌ Error handling app membership valid:', error);
+  }
+}
+
+// Store member with basic webhook data only
+async function storeMemberBasic(eventData, companyId) {
   const userId = eventData.user_id || eventData.user?.id;
   const membershipId = eventData.id;
-
-  if (!userId || !membershipId) {
-    throw new Error('Missing user_id or membership_id in webhook data');
-  }
-
-  console.log(`📝 Processing member: ${userId}, membership: ${membershipId}`);
-
-  // Fetch user data from Whop API
-  const userData = await fetchWhopUserData(userId, apiKey);
-  if (!userData) {
-    throw new Error(`Failed to fetch user data for user_id: ${userId}`);
-  }
-
-  // Fetch membership data for custom fields
-  const membershipData = await fetchWhopMembershipData(membershipId, apiKey);
   
-  // Extract custom field responses
-  let waitlistResponses = {};
-  if (membershipData) {
-    waitlistResponses = {
-      ...membershipData.custom_fields_responses,
-      ...membershipData.custom_fields_responses_v2
-    };
-  }
-
-  // Store member in database
-  const result = await pool.query(`
+  await pool.query(`
     INSERT INTO members (
       whop_company_id, 
       whop_user_id, 
       whop_membership_id,
-      email, 
-      username, 
-      name, 
-      profile_picture_url,
-      waitlist_responses, 
       membership_data, 
       status
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
+    VALUES ($1, $2, $3, $4, 'active')
     ON CONFLICT (whop_membership_id)
     DO UPDATE SET
-      email = EXCLUDED.email,
-      username = EXCLUDED.username,
-      name = EXCLUDED.name,
-      profile_picture_url = EXCLUDED.profile_picture_url,
-      waitlist_responses = EXCLUDED.waitlist_responses,
       membership_data = EXCLUDED.membership_data,
       status = 'active',
       updated_at = CURRENT_TIMESTAMP
-    RETURNING id
-  `, [
-    companyId,
-    userId,
-    membershipId,
-    userData.email,
-    userData.username,
-    userData.name || userData.display_name,
-    userData.profile_picture_url,
-    JSON.stringify(waitlistResponses),
-    JSON.stringify(eventData)
-  ]);
-
-  console.log(`✅ Member ${userId} stored successfully (DB ID: ${result.rows[0].id})`);
-  console.log(`📋 Waitlist responses: ${Object.keys(waitlistResponses).length} fields`);
+  `, [companyId, userId, membershipId, JSON.stringify(eventData)]);
   
-  return result.rows[0];
+  console.log(`✅ Basic member data stored for ${userId}`);
 }
 
-// Handle membership becoming invalid
-async function handleMembershipInvalid(eventData, companyId) {
+// Handle app membership becoming invalid
+async function handleAppMembershipInvalid(eventData, webhookData) {
   const userId = eventData.user_id || eventData.user?.id;
   const membershipId = eventData.id;
+  const companyId = eventData.company_id || webhookData.company_id;
 
   await pool.query(
     'UPDATE members SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE whop_company_id = $2 AND (whop_user_id = $3 OR whop_membership_id = $4)',
     ['inactive', companyId, userId, membershipId]
   );
 
-  console.log(`✅ Deactivated member ${userId} for company ${companyId}`);
+  console.log(`✅ Deactivated app member ${userId} for company ${companyId}`);
 }
 
-// API Routes
-
-// Register a new Whop group
-app.post('/api/register-group', async (req, res) => {
+// Handle app installation
+async function handleAppInstalled(eventData) {
   try {
-    const { whop_company_id, group_name, webhook_secret, api_key } = req.body;
-
-    if (!whop_company_id || !group_name) {
-      return res.status(400).json({ 
-        error: 'whop_company_id and group_name are required' 
-      });
-    }
-
-    const result = await pool.query(`
-      INSERT INTO groups (whop_company_id, group_name, webhook_secret, api_key)
-      VALUES ($1, $2, $3, $4)
+    const { company_id, installation_id, access_token } = eventData;
+    
+    await pool.query(`
+      INSERT INTO app_installations (whop_company_id, installation_id, access_token, is_active)
+      VALUES ($1, $2, $3, TRUE)
       ON CONFLICT (whop_company_id)
       DO UPDATE SET
-        group_name = EXCLUDED.group_name,
-        webhook_secret = EXCLUDED.webhook_secret,
-        api_key = EXCLUDED.api_key
-      RETURNING *
-    `, [whop_company_id, group_name, webhook_secret, api_key]);
+        installation_id = EXCLUDED.installation_id,
+        access_token = EXCLUDED.access_token,
+        is_active = TRUE,
+        installed_at = CURRENT_TIMESTAMP
+    `, [company_id, installation_id, access_token]);
 
-    console.log(`✅ Group registered: ${group_name}`);
-    res.json({ success: true, group: result.rows[0] });
+    console.log(`✅ App installed for company: ${company_id}`);
   } catch (error) {
-    console.error('❌ Error registering group:', error);
-    res.status(500).json({ error: 'Failed to register group' });
+    console.error('❌ Error handling app installation:', error);
   }
-});
+}
 
-// Get member directory
+// Handle app uninstallation
+async function handleAppUninstalled(eventData) {
+  try {
+    const { company_id } = eventData;
+    
+    await pool.query(
+      'UPDATE app_installations SET is_active = FALSE WHERE whop_company_id = $1',
+      [company_id]
+    );
+
+    console.log(`✅ App uninstalled for company: ${company_id}`);
+  } catch (error) {
+    console.error('❌ Error handling app uninstallation:', error);
+  }
+}
+
+// API Routes for the app
+
+// Get member directory for a company (used by the app UI)
 app.get('/api/directory/:companyId', async (req, res) => {
   try {
     const { companyId } = req.params;
     const { status = 'active' } = req.query;
+
+    // Check if app is installed for this company
+    const installationCheck = await pool.query(
+      'SELECT company_name FROM app_installations WHERE whop_company_id = $1 AND is_active = TRUE',
+      [companyId]
+    );
+
+    if (installationCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'App not installed for this company' });
+    }
 
     const result = await pool.query(`
       SELECT 
@@ -348,6 +364,7 @@ app.get('/api/directory/:companyId', async (req, res) => {
 
     res.json({
       success: true,
+      company: installationCheck.rows[0].company_name,
       members: result.rows,
       count: result.rows.length
     });
@@ -357,76 +374,24 @@ app.get('/api/directory/:companyId', async (req, res) => {
   }
 });
 
-// Get group configuration
-app.get('/api/group/:companyId', async (req, res) => {
+// Get app installation status
+app.get('/api/installation/:companyId', async (req, res) => {
   try {
     const { companyId } = req.params;
 
     const result = await pool.query(
-      'SELECT whop_company_id, group_name, created_at FROM groups WHERE whop_company_id = $1',
+      'SELECT whop_company_id, company_name, installed_at, is_active FROM app_installations WHERE whop_company_id = $1',
       [companyId]
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Group not found' });
+      return res.status(404).json({ error: 'App not installed' });
     }
 
-    res.json({ success: true, group: result.rows[0] });
+    res.json({ success: true, installation: result.rows[0] });
   } catch (error) {
-    console.error('Error fetching group:', error);
-    res.status(500).json({ error: 'Failed to fetch group' });
-  }
-});
-
-// Manual sync member (force refresh from Whop API)
-app.post('/api/sync-member/:companyId/:userId', async (req, res) => {
-  try {
-    const { companyId, userId } = req.params;
-
-    // Get API key for this company
-    const groupResult = await pool.query(
-      'SELECT api_key FROM groups WHERE whop_company_id = $1',
-      [companyId]
-    );
-
-    if (groupResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Company not found' });
-    }
-
-    const apiKey = groupResult.rows[0].api_key;
-    if (!apiKey) {
-      return res.status(400).json({ error: 'No API key configured for this company' });
-    }
-
-    // Fetch fresh user data
-    const userData = await fetchWhopUserData(userId, apiKey);
-    if (!userData) {
-      return res.status(404).json({ error: 'User not found in Whop' });
-    }
-
-    // Update database
-    const result = await pool.query(`
-      UPDATE members 
-      SET email = $1, username = $2, name = $3, profile_picture_url = $4, updated_at = CURRENT_TIMESTAMP
-      WHERE whop_company_id = $5 AND whop_user_id = $6
-      RETURNING *
-    `, [
-      userData.email,
-      userData.username,
-      userData.name || userData.display_name,
-      userData.profile_picture_url,
-      companyId,
-      userId
-    ]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Member not found in database' });
-    }
-
-    res.json({ success: true, member: result.rows[0] });
-  } catch (error) {
-    console.error('Error syncing member:', error);
-    res.status(500).json({ error: 'Failed to sync member' });
+    console.error('Error fetching installation:', error);
+    res.status(500).json({ error: 'Failed to fetch installation status' });
   }
 });
 
@@ -434,20 +399,31 @@ app.post('/api/sync-member/:companyId/:userId', async (req, res) => {
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    type: 'whop_app'
   });
 });
 
-// Serve the directory page
+// Serve the directory page for companies
 app.get('/directory.html', (req, res) => {
   res.sendFile(__dirname + '/public/directory.html');
+});
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({
+    name: 'Whop Member Directory App',
+    status: 'running',
+    webhook_url: '/webhook/whop',
+    directory_url: '/directory.html?company=COMPANY_ID'
+  });
 });
 
 // Initialize database and start server
 initializeDatabase().then(() => {
   app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`📡 Webhook endpoint: ${process.env.BASE_URL || 'http://localhost:' + PORT}/webhook/whop`);
+    console.log(`🚀 Whop App server running on port ${PORT}`);
+    console.log(`📱 App webhook endpoint: ${process.env.BASE_URL || 'http://localhost:' + PORT}/webhook/whop`);
     console.log(`🌐 Directory URL: ${process.env.BASE_URL || 'http://localhost:' + PORT}/directory.html?company=COMPANY_ID`);
   });
 });
