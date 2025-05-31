@@ -19,31 +19,58 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// Whop API helper function
+// Enhanced Whop API helper with full debugging
 async function fetchWhopMembershipData(membershipId, apiKey = null) {
-  try {
-    const authKey = apiKey || process.env.WHOP_API_KEY;
-    if (!authKey) {
-      throw new Error('No API key available');
-    }
-
-    const response = await fetch(`https://api.whop.com/api/v2/memberships/${membershipId}`, {
-      headers: {
-        'Authorization': authKey.startsWith('Bearer ') ? authKey : `Bearer ${authKey}`,
-        'Content-Type': 'application/json'
+    try {
+      const authKey = apiKey || process.env.WHOP_API_KEY;
+      if (!authKey) {
+        throw new Error('No API key available');
       }
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Whop API error: ${response.status} - ${response.statusText}`);
+  
+      console.log(`🔍 Fetching membership ${membershipId} from Whop API...`);
+      
+      const response = await fetch(`https://api.whop.com/api/v2/memberships/${membershipId}`, {
+        headers: {
+          'Authorization': authKey.startsWith('Bearer ') ? authKey : `Bearer ${authKey}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      console.log(`📊 Whop API Response Status: ${response.status}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ Whop API error: ${response.status} - ${errorText}`);
+        throw new Error(`Whop API error: ${response.status} - ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      // FULL DEBUG OUTPUT
+      console.log('🔍 FULL WHOP API RESPONSE:');
+      console.log(JSON.stringify(data, null, 2));
+      
+      // Check all possible locations for custom fields
+      console.log('🔍 CHECKING FOR CUSTOM FIELDS:');
+      console.log('custom_fields_responses:', data.custom_fields_responses);
+      console.log('custom_fields_responses_v2:', data.custom_fields_responses_v2);
+      console.log('custom_fields:', data.custom_fields);
+      console.log('fields:', data.fields);
+      console.log('responses:', data.responses);
+      console.log('form_responses:', data.form_responses);
+      console.log('checkout_session:', data.checkout_session);
+      
+      // Check if there's a user object with responses
+      if (data.user) {
+        console.log('user object found:', Object.keys(data.user));
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('❌ Error fetching Whop membership data:', error);
+      return null;
     }
-    
-    return await response.json();
-  } catch (error) {
-    console.error('Error fetching Whop membership data:', error);
-    return null;
   }
-}
 
 // Initialize database tables
 async function initializeDatabase() {
