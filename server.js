@@ -288,9 +288,6 @@ app.get('/api/directory/:companyId', async (req, res) => {
         user_id,
         membership_id,
         email,
-        username,
-        name,
-        profile_picture_url,
         custom_fields,
         joined_at,
         status
@@ -302,8 +299,13 @@ app.get('/api/directory/:companyId', async (req, res) => {
     res.json({
       success: true,
       members: result.rows.map(member => ({
-        ...member,
-        waitlist_responses: member.custom_fields || {}
+        id: member.id,
+        user_id: member.user_id,
+        membership_id: member.membership_id,
+        email: member.email,
+        waitlist_responses: member.custom_fields || {}, // Map custom_fields to waitlist_responses for frontend compatibility
+        joined_at: member.joined_at,
+        status: member.status
       })),
       count: result.rows.length
     });
