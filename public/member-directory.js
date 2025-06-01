@@ -11,104 +11,29 @@ class WhopMemberDirectory {
         console.log('Initializing Whop Member Directory...');
         
         // TEMPORARY: Hardcode company ID for testing
-        // Replace 'YOUR_ACTUAL_COMPANY_ID' with your real Whop company ID
-        const DEBUG_COMPANY_ID = 'biz_6GuEa8lMu5p9yI'; // Using the ID from your URL
+        const companyIdToUse = 'biz_6GuEa8lMu5p9yI'; // Hardcoded ID for testing
         
         // Set up message listener for Whop iframe communication
         window.addEventListener('message', this.handleWhopMessage.bind(this));
         
-        // For Whop native apps, the company ID should be in the URL
-        const urlParams = new URLSearchParams(window.location.search);
-        const companyId = urlParams.get('company_id') || urlParams.get('business_id') || urlParams.get('biz');
+        // Use the hardcoded ID directly for now
+        console.log('Using hardcoded company ID for testing:', companyIdToUse);
+        this.companyId = companyIdToUse;
         
-        if (companyId) {
-            console.log('Found company ID in URL:', companyId);
-            this.companyId = companyId;
-            await this.loadMembers();
-        } else if (DEBUG_COMPANY_ID && DEBUG_COMPANY_ID !== 'YOUR_ACTUAL_COMPANY_ID') {
-            // Use debug company ID if set
-            console.log('Using DEBUG company ID:', DEBUG_COMPANY_ID);
-            this.companyId = DEBUG_COMPANY_ID;
-            await this.loadMembers();
-        } else {
-            // Fallback: Try to get from parent window
-            console.log('No company ID in URL, attempting to get from Whop context...');
-            this.sendWhopMessage({ type: 'GET_CONTEXT' });
-            
-            // If no response after 3 seconds, show error
-            setTimeout(() => {
-                if (!this.companyId) {
-                    console.error('Unable to determine company ID');
-                    this.showError('Unable to load members. Company ID not found.');
-                }
-            }, 3000);
-        }
+        // Proceed to load members immediately with the hardcoded ID
+        await this.loadMembers();
     }
 
     handleWhopMessage(event) {
-        // Log all messages for debugging
-        console.log('Received postMessage from:', event.origin);
-        console.log('Message data:', event.data);
-        
-        // Only accept messages from Whop domains
-        const allowedOrigins = ['https://whop.com', 'https://dash.whop.com'];
-        if (!allowedOrigins.includes(event.origin)) {
-            console.warn('Ignoring message from unauthorized origin:', event.origin);
-            return;
-        }
-
-        const { type, data } = event.data;
-        console.log('Processing message type:', type, 'with data:', data);
-
-        switch (type) {
-            case 'CONTEXT':
-                this.handleContext(data);
-                break;
-            case 'USER_INFO':
-                this.currentUser = data.user;
-                break;
-            case 'WHOP_CONTEXT': // Alternative message type
-                this.handleContext(data);
-                break;
-        }
+        // No-op: We are bypassing Whop context for now
     }
 
     sendWhopMessage(message) {
-        // Try multiple possible parent origins
-        const possibleOrigins = [
-            'https://whop.com',
-            'https://dash.whop.com',
-            '*' // Fallback for testing
-        ];
-        
-        possibleOrigins.forEach(origin => {
-            try {
-                window.parent.postMessage(message, origin);
-                console.log(`Sent message to ${origin}:`, message);
-            } catch (e) {
-                console.warn(`Failed to send message to ${origin}:`, e);
-            }
-        });
+        // No-op: We are bypassing Whop context for now
     }
 
     async handleContext(context) {
-        console.log('Whop context received:', context);
-        
-        // Extract company ID from context
-        this.companyId = context.company?.id || context.business_id || context.page_id;
-        
-        if (!this.companyId) {
-            // Try to get from URL parameters as fallback
-            const urlParams = new URLSearchParams(window.location.search);
-            this.companyId = urlParams.get('company_id') || urlParams.get('business_id');
-        }
-
-        if (this.companyId) {
-            // Now that companyId is known, load members
-            await this.loadMembers();
-        } else {
-            this.showError('Unable to determine company ID');
-        }
+        // No-op: We are bypassing Whop context for now
     }
 
     async loadMembers() {
