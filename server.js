@@ -26,7 +26,7 @@ app.use('/webhook/whop', express.raw({ type: 'application/json' }));
 
 // Middleware to parse JSON body for other routes (and for req.body on non-webhook routes)
 app.use(express.json());
-app.use(express.static('public'));
+app.use('/app', express.static('public'));
 
 // Add CSP headers for iframe compatibility
 app.use((req, res, next) => {
