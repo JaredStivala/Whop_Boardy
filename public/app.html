@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Member Directory - Whop App</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #ffffff;
+            line-height: 1.6;
+            height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .app-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            height: 100%;
+            overflow-y: auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 30px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 16px;
+        }
+
+        .header h1 {
+            font-size: 2.2rem;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .header p {
+            font-size: 1rem;
+            opacity: 0.9;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin: 25px 0;
+            flex-wrap: wrap;
+        }
+
+        .stat-item {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px 25px;
+            border-radius: 12px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+
+        .stat-number {
+            font-size: 1.8rem;
+            font-weight: 700;
+            display: block;
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            opacity: 0.8;
+        }
+
+        .search-filter {
+            background: #1a1a1a;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            border: 1px solid #2a2a2a;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 12px 18px;
+            border: 1px solid #3a3a3a;
+            background: #0a0a0a;
+            color: #ffffff;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            transition: all 0.2s;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #667eea;
+            background: #0f0f0f;
+        }
+
+        .search-input::placeholder {
+            color: #666;
+        }
+
+        .members-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        .member-card {
+            background: #1a1a1a;
+            border-radius: 12px;
+            padding: 20px;
+            transition: all 0.2s;
+            border: 1px solid #2a2a2a;
+        }
+
+        .member-card:hover {
+            transform: translateY(-2px);
+            border-color: #667eea;
+            box-shadow: 0 10px 25px -5px rgba(102, 126, 234, 0.2);
+        }
+
+        .member-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        .member-name {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: #ffffff;
+        }
+
+        .member-email {
+            color: #888;
+            margin-bottom: 12px;
+            font-size: 0.85rem;
+        }
+
+        .member-details {
+            border-top: 1px solid #2a2a2a;
+            padding-top: 12px;
+        }
+
+        .detail-item {
+            margin-bottom: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .detail-label {
+            font-weight: 600;
+            color: #aaa;
+            min-width: 100px;
+            font-size: 0.85rem;
+        }
+
+        .detail-value {
+            color: #ccc;
+            flex: 1;
+            font-size: 0.85rem;
+        }
+
+        .joined-date {
+            font-size: 0.75rem;
+            color: #666;
+            text-align: right;
+            margin-top: 12px;
+            font-style: italic;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+            font-size: 1rem;
+            color: #888;
+        }
+
+        .error {
+            background: #2a1a1a;
+            border: 1px solid #5a2a2a;
+            color: #ff6b6b;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .no-members {
+            text-align: center;
+            padding: 60px 20px;
+            color: #888;
+        }
+
+        .no-members h3 {
+            font-size: 1.3rem;
+            margin-bottom: 10px;
+            color: #aaa;
+        }
+
+        /* Dark theme scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #1a1a1a;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #3a3a3a;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4a4a4a;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div class="header">
+            <h1 id="groupName">Member Directory</h1>
+            <p>Connect with fellow community members</p>
+            <div class="stats">
+                <div class="stat-item">
+                    <span class="stat-number" id="totalMembers">-</span>
+                    <span class="stat-label">Total Members</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number" id="newThisMonth">-</span>
+                    <span class="stat-label">New This Month</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="search-filter">
+            <input 
+                type="text" 
+                class="search-input" 
+                placeholder="Search members by name, email, or custom fields..."
+                id="searchInput"
+            >
+        </div>
+
+        <div id="loadingState" class="loading">
+            Loading members...
+        </div>
+
+        <div id="errorState" class="error" style="display: none;">
+            Failed to load members. Please try again later.
+        </div>
+
+        <div id="noMembersState" class="no-members" style="display: none;">
+            <h3>No members found</h3>
+            <p>Members will appear here once they join your community!</p>
+        </div>
+
+        <div id="membersGrid" class="members-grid" style="display: none;">
+        </div>
+    </div>
+
+    <script>
+        // Native Whop App Implementation
+        class WhopMemberDirectory {
+            constructor() {
+                this.members = [];
+                this.filteredMembers = [];
+                this.companyId = null;
+                this.currentUser = null;
+                
+                this.init();
+            }
+
+            async init() {
+                console.log('Initializing Whop Member Directory...');
+                
+                // Set up message listener for Whop iframe communication
+                window.addEventListener('message', this.handleWhopMessage.bind(this));
+                
+                // Request initial data from Whop
+                this.sendWhopMessage({ type: 'GET_CONTEXT' });
+                
+                // Set up search functionality
+                this.setupEventListeners();
+            }
+
+            handleWhopMessage(event) {
+                // Only accept messages from Whop domains
+                const allowedOrigins = ['https://whop.com', 'https://dash.whop.com'];
+                if (!allowedOrigins.includes(event.origin) && !event.origin.includes('localhost')) {
+                    return;
+                }
+
+                const { type, data } = event.data;
+                console.log('Received message from Whop:', type, data);
+
+                switch (type) {
+                    case 'CONTEXT':
+                        this.handleContext(data);
+                        break;
+                    case 'USER_INFO':
+                        this.currentUser = data.user;
+                        break;
+                }
+            }
+
+            sendWhopMessage(message) {
+                window.parent.postMessage(message, '*');
+            }
+
+            async handleContext(context) {
+                console.log('Whop context received:', context);
+                
+                // Extract company ID from context
+                this.companyId = context.company?.id || context.business_id || context.page_id;
+                
+                if (!this.companyId) {
+                    // Try to get from URL parameters as fallback
+                    const urlParams = new URLSearchParams(window.location.search);
+                    this.companyId = urlParams.get('company_id') || urlParams.get('business_id');
+                }
+
+                if (this.companyId) {
+                    await this.loadMembers();
+                } else {
+                    this.showError('Unable to determine company ID');
+                }
+            }
+
+            async loadMembers() {
+                try {
+                    console.log(`Loading members for company: ${this.companyId}`);
+                    
+                    const response = await fetch(`/api/directory/${this.companyId}`);
+                    
+                    if (!response.ok) {
+                        throw new Error('Failed to fetch members');
+                    }
+
+                    const data = await response.json();
+                    this.members = data.members || [];
+                    this.filteredMembers = [...this.members];
+                    
+                    this.updateStats();
+                    this.renderMembers();
+                    this.showContent();
+                    
+                } catch (error) {
+                    console.error('Error loading members:', error);
+                    this.showError();
+                }
+            }
+
+            updateStats() {
+                const totalMembers = this.members.length;
+                const now = new Date();
+                const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
+                
+                const newThisMonth = this.members.filter(member => 
+                    new Date(member.joined_at) > thirtyDaysAgo
+                ).length;
+
+                document.getElementById('totalMembers').textContent = totalMembers;
+                document.getElementById('newThisMonth').textContent = newThisMonth;
+            }
+
+            renderMembers() {
+                const grid = document.getElementById('membersGrid');
+                
+                if (this.filteredMembers.length === 0) {
+                    this.showNoMembers();
+                    return;
+                }
+
+                grid.innerHTML = this.filteredMembers.map(member => this.createMemberCard(member)).join('');
+            }
+
+            createMemberCard(member) {
+                const name = member.name || member.username || 'Anonymous Member';
+                const email = member.email || 'No email provided';
+                const avatar = name.charAt(0).toUpperCase();
+                const joinedDate = new Date(member.joined_at).toLocaleDateString();
+                
+                // Extract custom fields
+                const customFields = member.waitlist_responses || member.custom_fields || {};
+                const customFieldsHtml = Object.entries(customFields)
+                    .filter(([key, value]) => value && value.toString().trim())
+                    .map(([key, value]) => `
+                        <div class="detail-item">
+                            <span class="detail-label">${this.formatLabel(key)}:</span>
+                            <span class="detail-value">${this.escapeHtml(value.toString())}</span>
+                        </div>
+                    `).join('');
+
+                return `
+                    <div class="member-card">
+                        <div class="member-avatar">${avatar}</div>
+                        <div class="member-name">${this.escapeHtml(name)}</div>
+                        <div class="member-email">${this.escapeHtml(email)}</div>
+                        
+                        ${customFieldsHtml ? `
+                            <div class="member-details">
+                                ${customFieldsHtml}
+                            </div>
+                        ` : ''}
+                        
+                        <div class="joined-date">Joined ${joinedDate}</div>
+                    </div>
+                `;
+            }
+
+            formatLabel(key) {
+                return key.replace(/_/g, ' ')
+                         .replace(/\b\w/g, l => l.toUpperCase());
+            }
+
+            escapeHtml(unsafe) {
+                return unsafe
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            }
+
+            setupEventListeners() {
+                const searchInput = document.getElementById('searchInput');
+                searchInput.addEventListener('input', (e) => {
+                    this.filterMembers(e.target.value);
+                });
+            }
+
+            filterMembers(searchTerm) {
+                const term = searchTerm.toLowerCase().trim();
+                
+                if (!term) {
+                    this.filteredMembers = [...this.members];
+                } else {
+                    this.filteredMembers = this.members.filter(member => {
+                        const name = (member.name || member.username || '').toLowerCase();
+                        const email = (member.email || '').toLowerCase();
+                        const customFields = JSON.stringify(member.waitlist_responses || member.custom_fields || {}).toLowerCase();
+                        
+                        return name.includes(term) || 
+                               email.includes(term) || 
+                               customFields.includes(term);
+                    });
+                }
+                
+                this.renderMembers();
+            }
+
+            showContent() {
+                document.getElementById('loadingState').style.display = 'none';
+                document.getElementById('errorState').style.display = 'none';
+                document.getElementById('noMembersState').style.display = 'none';
+                document.getElementById('membersGrid').style.display = 'grid';
+            }
+
+            showError(message = 'Failed to load members. Please try again later.') {
+                document.getElementById('loadingState').style.display = 'none';
+                document.getElementById('membersGrid').style.display = 'none';
+                document.getElementById('noMembersState').style.display = 'none';
+                document.getElementById('errorState').style.display = 'block';
+                document.getElementById('errorState').textContent = message;
+            }
+
+            showNoMembers() {
+                document.getElementById('loadingState').style.display = 'none';
+                document.getElementById('membersGrid').style.display = 'none';
+                document.getElementById('errorState').style.display = 'none';
+                document.getElementById('noMembersState').style.display = 'block';
+            }
+        }
+
+        // Initialize the app when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            window.whopDirectory = new WhopMemberDirectory();
+        });
+
+        // Auto-refresh every 5 minutes
+        setInterval(() => {
+            if (window.whopDirectory && window.whopDirectory.companyId) {
+                window.whopDirectory.loadMembers();
+            }
+        }, 5 * 60 * 1000);
+    </script>
+</body>
+</html>
