@@ -29,14 +29,14 @@
         .header {
             text-align: center;
             margin-bottom: 40px;
-            padding: 50px 20px; /* Increased padding further */
-            background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%); /* New techy gradient */
-            border-radius: 16px; /* Larger border-radius */
+            padding: 30px 20px; /* Reduced padding */
+            background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%);
+            border-radius: 16px;
             color: #fff;
-            border: 1px solid #3a3a3a; /* Adjusted border color */
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4); /* More pronounced shadow */
-            position: relative; /* Needed for pseudo-elements */
-            overflow: hidden; /* Hide pseudo-element overflow */
+            border: 1px solid #3a3a3a;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+            position: relative;
+            overflow: hidden;
         }
 
         /* Optional: Add a subtle tech pattern or overlay */
@@ -53,70 +53,70 @@
         }
 
         .header h1 {
-            font-size: 2.8rem; /* Larger heading */
-            margin-bottom: 10px; /* Adjusted margin */
-            font-weight: 700; /* Bolder heading */
-            color: #ffffff; /* White heading color */
-            text-shadow: 0 0 10px rgba(102, 126, 234, 0.5); /* Subtle text glow */
-            position: relative; /* Ensure text is above pseudo-element */
-            z-index: 1; /* Ensure text is above pseudo-element */
+            font-size: 2.4rem; /* Slightly smaller heading */
+            margin-bottom: 8px; /* Adjusted margin */
+            font-weight: 700;
+            color: #ffffff;
+            text-shadow: 0 0 10px rgba(102, 126, 234, 0.5);
+            position: relative;
+            z-index: 1;
         }
 
         .header p {
-            font-size: 1.1rem; /* Larger subtitle */
-            opacity: 0.8; /* Increased opacity */
-            margin-bottom: 30px; /* More space below subtitle */
-            color: #e0e0e0; /* Lighter color for subtitle */
-            position: relative; /* Ensure text is above pseudo-element */
-            z-index: 1; /* Ensure text is above pseudo-element */
+            font-size: 1rem; /* Slightly smaller subtitle */
+            opacity: 0.8;
+            margin-bottom: 20px; /* Adjusted space below subtitle */
+            color: #e0e0e0;
+            position: relative;
+            z-index: 1;
         }
 
         .stats {
             display: flex;
             justify-content: center;
-            gap: 30px; /* Adjusted gap */
-            margin: 30px 0 0; /* Adjusted margin-top */
+            gap: 25px; /* Adjusted gap */
+            margin: 25px 0 0; /* Adjusted margin-top */
             flex-wrap: wrap;
-            position: relative; /* Ensure stats are above pseudo-element */
-            z-index: 1; /* Ensure stats are above pseudo-element */
+            position: relative;
+            z-index: 1;
         }
 
         .stat-item {
-            background: rgba(44, 83, 100, 0.5); /* Semi-transparent background using gradient colors */
-            padding: 15px 25px; /* Adjusted padding */
-            border-radius: 10px; /* Slightly smaller border-radius */
+            background: rgba(44, 83, 100, 0.5);
+            padding: 12px 20px; /* Adjusted padding */
+            border-radius: 10px;
             text-align: center;
-            border: 1px solid rgba(70, 130, 180, 0.3); /* Border matching accent color */
-            backdrop-filter: blur(5px); /* Subtle blur */
-            min-width: 140px; /* Minimum width for stat items */
-            transition: all 0.3s ease; /* Smooth transition */
+            border: 1px solid rgba(70, 130, 180, 0.3);
+            backdrop-filter: blur(5px);
+            min-width: 140px;
+            transition: all 0.3s ease;
         }
 
          .stat-item:hover {
-            background: rgba(70, 130, 180, 0.3); /* Accent color background on hover */
-            border-color: #667eea; /* Accent border on hover */
-            transform: translateY(-3px); /* Lift effect on hover */
+            background: rgba(70, 130, 180, 0.3);
+            border-color: #667eea;
+            transform: translateY(-3px);
          }
 
         .stat-number {
-            font-size: 2rem; /* Larger stat number */
+            font-size: 1.8rem; /* Slightly smaller stat number */
             font-weight: 700;
             display: block;
-            color: #00ffff; /* Cyan accent color */
-            text-shadow: 0 0 8px rgba(0, 255, 255, 0.4); /* Subtle glow */
+            color: #00ffff;
+            text-shadow: 0 0 8px rgba(0, 255, 255, 0.4);
         }
 
         .stat-label {
-            font-size: 0.9rem; /* Slightly larger label */
-            opacity: 0.9; /* Increased opacity */
-            color: #b0e0e6; /* Light blue color for labels */
+            font-size: 0.85rem; /* Slightly smaller label */
+            opacity: 0.9;
+            color: #b0e0e6;
         }
 
         /* New Table Styles */
         .members-table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 30px; /* Added space above table */
+            margin-top: 30px;
             margin-bottom: 40px;
             background-color: #1a1a1a;
             border: 1px solid #2a2a2a;
@@ -133,7 +133,7 @@
 
         .members-table th {
             background-color: #2a2a2a;
-            font-size: 0.95rem; /* Slightly larger font */
+            font-size: 0.95rem;
             font-weight: 600;
             color: #aaaaaa;
             text-transform: uppercase;
@@ -148,7 +148,7 @@
         }
 
         .member-email-cell {
-            color: #b0b0b0; /* Lighter email color */
+            color: #b0b0b0;
             font-size: 0.9rem;
         }
 
@@ -175,6 +175,7 @@
             padding: 60px 20px;
             font-size: 1rem;
             color: #888;
+            display: none; /* Hide loading by default */
         }
 
         .error {
@@ -185,12 +186,14 @@
             border-radius: 8px;
             text-align: center;
             margin: 20px 0;
+            display: none; /* Hide error by default */
         }
 
         .no-members {
             text-align: center;
             padding: 60px 20px;
             color: #888;
+            display: none; /* Hide no members by default */
         }
 
         .no-members h3 {
@@ -239,17 +242,17 @@
             Loading members...
         </div>
 
-        <div id="errorState" class="error" style="display: none;">
+        <div id="errorState" class="error">
             Failed to load members. Please try again later.
         </div>
 
-        <div id="noMembersState" class="no-members" style="display: none;">
+        <div id="noMembersState" class="no-members">
             <h3>No members found</h3>
             <p>Members will appear here once they join your community!</p>
         </div>
 
         <!-- Member Table -->
-        <table id="membersTable" class="members-table" style="display: none;">
+        <table id="membersTable" class="members-table">
             <thead>
                 <tr>
                     <th>Email</th>
@@ -269,11 +272,11 @@
         class WhopMemberDirectory {
             constructor() {
                 this.members = [];
-                this.filteredMembers = [];
+                this.filteredMembers = []; // Keep filteredMembers for now
                 this.companyId = null;
                 this.currentUser = null;
                 
-                this.init();
+                // Removed init call from constructor
             }
 
             async init() {
@@ -323,6 +326,7 @@
                 }
 
                 if (this.companyId) {
+                    // Now that companyId is known, load members (this will replace the test entry)
                     await this.loadMembers();
                 } else {
                     this.showError('Unable to determine company ID');
@@ -353,11 +357,11 @@
                     console.log('Members data received:', data);
 
                     this.members = data.members || [];
-                    this.filteredMembers = [...this.members];
+                    this.filteredMembers = [...this.members]; // Still copy to filtered for rendering logic
                     
                     this.updateStats();
-                    this.renderMembers();
-                    this.showContent();
+                    this.renderMembers(); // This will clear the test entry and render actual members
+                    this.showContent(); // Ensure content state is correct after loading
                     
                 } catch (error) {
                     console.error('Error loading members:', error);
@@ -380,32 +384,14 @@
 
             renderMembers() {
                 const tbody = document.getElementById('membersTable').querySelector('tbody');
-                tbody.innerHTML = ''; // Clear previous entries
+                tbody.innerHTML = ''; // Clear previous entries (including the initial test entry)
                 
-                // --- Add Hardcoded Test Member Entry ---
-                const testMember = {
-                    id: 'test-123',
-                    user_id: 'user-test',
-                    membership_id: 'mem-test',
-                    email: 'test@example.com',
-                    waitlist_responses: {
-                        'Question 1': 'Answer 1',
-                        'Another Field': 'Some Value',
-                        'Empty Field': '',
-                    },
-                    joined_at: new Date().toISOString(), // Use current date/time
-                    status: 'active',
-                };
-                // Add test member to the beginning of the list for visibility
-                const membersToRender = [testMember, ...this.filteredMembers];
-                // --- End Hardcoded Test Member Entry ---
-
-                if (membersToRender.length === 0) {
+                if (this.filteredMembers.length === 0) {
                     this.showNoMembers();
                     return;
                 }
 
-                membersToRender.forEach(member => {
+                this.filteredMembers.forEach(member => {
                     tbody.appendChild(this.createMemberRow(member));
                 });
             }
@@ -461,6 +447,8 @@
                     .replace(/'/g, "&#039;");
             }
 
+            // Removed setupEventListeners and filterMembers
+
             showContent() {
                 document.getElementById('loadingState').style.display = 'none';
                 document.getElementById('errorState').style.display = 'none';
@@ -492,7 +480,36 @@
 
         // Initialize the app when page loads
         document.addEventListener('DOMContentLoaded', () => {
-            window.whopDirectory = new WhopMemberDirectory();
+            const whopDirectory = new WhopMemberDirectory();
+            
+            // Get table body and loading state elements
+            const tbody = document.getElementById('membersTable').querySelector('tbody');
+            const loadingStateElement = document.getElementById('loadingState');
+
+            // Define hardcoded test member
+            const testMember = {
+                id: 'test-123',
+                user_id: 'user-test',
+                membership_id: 'mem-test',
+                email: 'test@example.com',
+                waitlist_responses: {
+                    'Question 1': 'Answer 1',
+                    'Another Field': 'Some Value',
+                    'Empty Field': '',
+                },
+                joined_at: new Date().toISOString(),
+                status: 'active',
+            };
+
+            // Render the test member immediately
+            tbody.appendChild(whopDirectory.createMemberRow(testMember));
+
+            // Hide loading state and show the table initially
+            if (loadingStateElement) loadingStateElement.style.display = 'none';
+            document.getElementById('membersTable').style.display = 'table';
+            
+            // Initialize the WhopDirectory to fetch actual members (this will clear and re-render)
+            whopDirectory.init();
         });
 
         // Auto-refresh every 5 minutes
