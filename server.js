@@ -14,6 +14,10 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
+pool.on('error', (err, client) => {
+    console.error('🟥 DATABASE POOL ERROR:', err.message, err.stack);
+  
+
 // Middleware - IMPORTANT: Configure CORS for Whop iframe
 app.use(cors({
   origin: ['https://whop.com', 'https://dash.whop.com', 'http://localhost:3000'],
@@ -276,25 +280,25 @@ async function handleMembershipInvalid(data) {
   }
 }
 
-// server.js
 app.get('/api/directory/:companyId', async (req, res) => {
     try {
-      // Log the raw request parameters and query object
+      // --- START: Pre-flight DB Check ---
+      console.log('ℹ️ Attempting Pre-flight DB check...');
+      const preCheck = await pool.query("SELECT 'db_ping_ok' as check_status, NOW() as current_time;");
+      console.log('✅ Pre-flight DB check successful:', preCheck.rows);
+      // --- END: Pre-flight DB Check ---
+  
+      // Your existing debug logs
       console.log('DEBUG: Raw req.params:', JSON.stringify(req.params));
       console.log('DEBUG: Raw req.query:', JSON.stringify(req.query));
-  
+    
       const { companyId } = req.params;
-      // Ensure 'status' defaults to 'active' if not provided in query
       const status = req.query.status || 'active'; 
-  
-      // Log the actual values being used for the query
-      // Use proper template literals (backticks ``) for interpolation
+    
       console.log(`DEBUG: Using companyId for query: '${companyId}'`);
       console.log(`DEBUG: Using status for query: '${status}'`);
-  
-      // Your existing console.log that shows the issue (for comparison, or remove if redundant)
-      // console.log(`Executing query with companyId: '<span class="math-inline">\{companyId\}', status\: '</span>{status}'`); 
-  
+      
+      // Your main query to get members
       const result = await pool.query(`
         SELECT 
           id,
@@ -309,8 +313,8 @@ app.get('/api/directory/:companyId', async (req, res) => {
         ORDER BY joined_at DESC
       `, [companyId, status]);
   
-      console.log("🔍 Raw DB result:", result.rows);
-  
+      console.log("🔍 Raw DB result:", result.rows); // This is the one we want to see populated!
+    
       res.json({
         success: true,
         members: result.rows.map(member => ({
@@ -324,12 +328,17 @@ app.get('/api/directory/:companyId', async (req, res) => {
         })),
         count: result.rows.length
       });
+  
     } catch (error) {
-      console.error('Error fetching directory:', error);
+      // This catch block will now also catch errors from the pre-flight check
+      console.error('🟥 ERROR IN /api/directory/:companyId ROUTE:', error.message, error.stack);
+      if (error.code) { 
+           console.error('🟥 DB ERROR CODE (if available):', error.code);
+      }
       res.status(500).json({ error: 'Failed to fetch directory' });
     }
   });
-    
+  // END OF REPLACED ROUTE
 
 // Serve the native app directory page
 app.get('/app', (req, res) => {
