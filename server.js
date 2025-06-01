@@ -19,6 +19,12 @@ app.use(cors({
   origin: ['https://whop.com', 'https://dash.whop.com', 'http://localhost:3000'],
   credentials: true
 }));
+
+// Middleware to get raw body for signature verification
+// This MUST come BEFORE express.json() if you need the raw body
+app.use('/webhook/whop', express.raw({ type: 'application/json' }));
+
+// Middleware to parse JSON body for other routes (and for req.body on non-webhook routes)
 app.use(express.json());
 app.use(express.static('public'));
 
@@ -80,36 +86,65 @@ app.get('/webhook/whop', (req, res) => {
 // Enhanced webhook handler for native Whop app
 app.post('/webhook/whop', async (req, res) => {
   try {
-    console.log('🔔 Webhook received:', JSON.stringify(req.body, null, 2));
-    
-    const { action, data } = req.body;
-    
+    console.log('🔔 Webhook received:'); // Raw body logged later if needed for debug
+    console.log('🔍 Webhook headers:', JSON.stringify(req.headers, null, 2));
+
     // Verify webhook signature if secret is provided
     if (process.env.WHOP_WEBHOOK_SECRET) {
       const signature = req.headers['x-whop-signature'];
-      const payload = JSON.stringify(req.body);
+      
+      // Use the raw body buffer for verification
+      const payload = req.body; // req.body is the raw buffer from express.raw() for this route
+      
+      if (!signature || !payload) {
+          console.error('❌ Missing webhook signature or payload');
+          return res.status(401).json({ error: 'Missing signature or payload' });
+      }
+
       const expectedSignature = crypto
         .createHmac('sha256', process.env.WHOP_WEBHOOK_SECRET)
-        .update(payload)
+        .update(payload) // Update with the raw buffer
         .digest('hex');
       
+      console.log('Signature from header:', signature);
+      console.log('Calculated signature:', expectedSignature);
+
       if (signature !== expectedSignature) {
         console.error('❌ Invalid webhook signature');
         return res.status(401).json({ error: 'Invalid signature' });
       }
+      console.log('✅ Webhook signature verified successfully');
+    } else {
+        console.warn('⚠️ WHOP_WEBHOOK_SECRET not set. Skipping signature verification.');
     }
+
+    // After verification, parse the raw body into a JSON object for easier access
+    // Only attempt parsing if payload exists (handled by missing payload check above)
+    let jsonBody;
+    try {
+      jsonBody = JSON.parse(req.body.toString());
+      console.log('Parsed webhook body:', JSON.stringify(jsonBody, null, 2)); // Log parsed body
+    } catch (parseError) {
+      console.error('❌ Failed to parse webhook body after verification:', parseError);
+      return res.status(400).json({ error: 'Invalid JSON body' });
+    }
+
+    const { action, data } = jsonBody; // Use the manually parsed body
+
+    console.log('📝 Action:', action);
+    console.log('📝 Data (parsed):', JSON.stringify(data, null, 2)); // Log parsed data
 
     switch (action) {
       case 'membership.went_valid':
       case 'app_membership.went_valid':
         await handleMembershipValid(data);
         break;
-        
+
       case 'membership.went_invalid':
       case 'app_membership.went_invalid':
         await handleMembershipInvalid(data);
         break;
-        
+
       default:
         console.log(`ℹ️ Unhandled event type: ${action}`);
     }
