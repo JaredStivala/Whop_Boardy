@@ -276,13 +276,24 @@ async function handleMembershipInvalid(data) {
   }
 }
 
+// server.js
 app.get('/api/directory/:companyId', async (req, res) => {
     try {
-      const { companyId } = req.params;
-      const { status = 'active' } = req.query; // Defaults to 'active'
+      // Log the raw request parameters and query object
+      console.log('DEBUG: Raw req.params:', JSON.stringify(req.params));
+      console.log('DEBUG: Raw req.query:', JSON.stringify(req.query));
   
-      // Log the exact parameters being used
-      console.log(`Executing query with companyId: '<span class="math-inline">\{companyId\}', status\: '</span>{status}'`);
+      const { companyId } = req.params;
+      // Ensure 'status' defaults to 'active' if not provided in query
+      const status = req.query.status || 'active'; 
+  
+      // Log the actual values being used for the query
+      // Use proper template literals (backticks ``) for interpolation
+      console.log(`DEBUG: Using companyId for query: '${companyId}'`);
+      console.log(`DEBUG: Using status for query: '${status}'`);
+  
+      // Your existing console.log that shows the issue (for comparison, or remove if redundant)
+      // console.log(`Executing query with companyId: '<span class="math-inline">\{companyId\}', status\: '</span>{status}'`); 
   
       const result = await pool.query(`
         SELECT 
@@ -298,26 +309,27 @@ app.get('/api/directory/:companyId', async (req, res) => {
         ORDER BY joined_at DESC
       `, [companyId, status]);
   
-      console.log("🔍 Raw DB result:", result.rows); 
+      console.log("🔍 Raw DB result:", result.rows);
+  
+      res.json({
+        success: true,
+        members: result.rows.map(member => ({
+          id: member.id,
+          user_id: member.user_id,
+          membership_id: member.membership_id,
+          email: member.email,
+          waitlist_responses: member.custom_fields || {},
+          joined_at: member.joined_at,
+          status: member.status
+        })),
+        count: result.rows.length
+      });
+    } catch (error) {
+      console.error('Error fetching directory:', error);
+      res.status(500).json({ error: 'Failed to fetch directory' });
+    }
+  });
     
-    res.json({
-      success: true,
-      members: result.rows.map(member => ({
-        id: member.id,
-        user_id: member.user_id,
-        membership_id: member.membership_id,
-        email: member.email,
-        waitlist_responses: member.custom_fields || {}, // Map custom_fields to waitlist_responses for frontend compatibility
-        joined_at: member.joined_at,
-        status: member.status
-      })),
-      count: result.rows.length
-    });
-  } catch (error) {
-    console.error('Error fetching directory:', error);
-    res.status(500).json({ error: 'Failed to fetch directory' });
-  }
-});
 
 // Serve the native app directory page
 app.get('/app', (req, res) => {
