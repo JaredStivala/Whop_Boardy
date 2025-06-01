@@ -276,27 +276,29 @@ async function handleMembershipInvalid(data) {
   }
 }
 
-// API endpoint to get members for a company
 app.get('/api/directory/:companyId', async (req, res) => {
-  try {
-    const { companyId } = req.params;
-    const { status = 'active' } = req.query;
-
-    const result = await pool.query(`
-      SELECT 
-        id,
-        user_id,
-        membership_id,
-        email,
-        custom_fields,
-        joined_at,
-        status
-      FROM whop_members 
-      WHERE company_id = $1 AND status = $2
-      ORDER BY joined_at DESC
-    `, [companyId, status]);
-
-    console.log("🔍 Raw DB result:", result.rows);
+    try {
+      const { companyId } = req.params;
+      const { status = 'active' } = req.query; // Defaults to 'active'
+  
+      // Log the exact parameters being used
+      console.log(`Executing query with companyId: '<span class="math-inline">\{companyId\}', status\: '</span>{status}'`);
+  
+      const result = await pool.query(`
+        SELECT 
+          id,
+          user_id,
+          membership_id,
+          email,
+          custom_fields,
+          joined_at,
+          status
+        FROM whop_members 
+        WHERE company_id = $1 AND status = $2
+        ORDER BY joined_at DESC
+      `, [companyId, status]);
+  
+      console.log("🔍 Raw DB result:", result.rows); 
     
     res.json({
       success: true,
