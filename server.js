@@ -183,33 +183,56 @@ async function handleMembershipValid(data) {
     const companyId = product?.business_id || data.page_id || data.company_id;
     
     if (!userId || !membershipId || !companyId) {
-      console.error('❌ Missing required fields');
+      console.error('❌ Missing required fields (userId, membershipId, or companyId)', { userId, membershipId, companyId });
       return;
     }
 
     console.log(`✅ Processing membership for user ${userId} in company ${companyId}`);
+    console.log('🔍 Webhook data.user object:', JSON.stringify(user, null, 2));
+    console.log('🔍 Webhook data.product object:', JSON.stringify(product, null, 2));
+    console.log('🔍 Webhook data root keys:', Object.keys(data));
 
     // Extract custom fields from the webhook data
     let customFields = {};
     
     // Try different possible locations for custom field data
-    if (data.custom_fields) {
-      customFields = data.custom_fields;
-    } else if (data.custom_field_responses) {
-      customFields = data.custom_field_responses;
-    } else if (data.metadata) {
-      customFields = data.metadata;
-    }
-    
-    // Also check for form_responses or checkout_custom_fields
-    if (data.form_responses) {
-      customFields = { ...customFields, ...data.form_responses };
-    }
-    if (data.checkout_custom_fields) {
-      customFields = { ...customFields, ...data.checkout_custom_fields };
+    const possibleCustomFieldKeys = [
+      'custom_fields',
+      'custom_field_responses', 
+      'metadata',
+      'form_responses',
+      'checkout_custom_fields'
+    ];
+
+    possibleCustomFieldKeys.forEach(key => {
+      if (data[key]) {
+        console.log(`✅ Found potential custom fields in data.${key}:`, JSON.stringify(data[key], null, 2));
+        // Attempt to merge, handle if it's not a simple object
+        try {
+             customFields = { ...customFields, ...data[key] };
+        } catch (e) {
+             console.warn(`⚠️ Could not merge data.${key} (not a simple object?):`, data[key]);
+             customFields[key] = data[key]; // Store as is if not mergeable
+        }
+      }
+    });
+
+    // Also check nested in user object (less common for form responses, but worth checking)
+    if (user) {
+       possibleCustomFieldKeys.forEach(key => {
+          if (user[key]) {
+            console.log(`✅ Found potential custom fields in data.user.${key}:`, JSON.stringify(user[key], null, 2));
+             try {
+                customFields = { ...customFields, ...user[key] };
+             } catch (e) {
+                console.warn(`⚠️ Could not merge data.user.${key} (not a simple object?):`, user[key]);
+                customFields[`user_${key}`] = user[key]; // Store as is if not mergeable
+             }
+          }
+       });
     }
 
-    console.log('📋 Custom fields found:', customFields);
+    console.log('📋 Final collected customFields before DB:', JSON.stringify(customFields, null, 2));
 
     // Store member in database
     await pool.query(`
@@ -242,10 +265,11 @@ async function handleMembershipValid(data) {
       user?.username || null,
       user?.name || user?.display_name || null,
       user?.profile_pic_url || user?.profile_picture_url || null,
-      JSON.stringify(customFields)
+      JSON.stringify(customFields) // Ensure we stringify the potentially complex object
     ]);
 
-    console.log(`✅ Member ${userId} stored successfully`);
+    console.log(`🎉 Member ${userId} stored successfully with custom fields.`);
+
   } catch (error) {
     console.error('❌ Error handling membership valid:', error);
   }
