@@ -1,4 +1,4 @@
-<script>
+
         // Native Whop App Implementation
         class WhopMemberDirectory {
             constructor() {
@@ -250,4 +250,3 @@
         //         window.whopDirectory.loadMembers();
         //     }
         // }, 5 * 60 * 1000);
-    </script>
