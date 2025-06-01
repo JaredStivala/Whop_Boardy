@@ -20,7 +20,7 @@ pool.on('error', (err, client) => {
 
 // Middleware - IMPORTANT: Configure CORS for Whop iframe
 app.use(cors({
-  origin: ['https://whop.com', 'https://dash.whop.com', 'http://localhost:3000'],
+  origin: ['https://whop.com', 'https://dash.whop.com', 'http://localhost:3000','https://app.whop.com', 'https://whopboardy-production.up.railway.app'],
   credentials: true
 }));
 

@@ -3,37 +3,38 @@ class WhopMemberDirectory {
     constructor() {
         this.members = [];
         this.filteredMembers = [];
-        this.companyId = null;
+        this.companyId = 'biz_6GuEa8lMu5p9yl'; // Fixed: lowercase 'l' after 8
         this.currentUser = null;
     }
 
     async init() {
         console.log('Initializing Whop Member Directory...');
         
-        // TEMPORARY: Hardcode company ID for testing
-        const companyIdToUse = 'biz_6GuEa8lMu5p9yl'; // Hardcoded ID for testing
+        // Always use the correct hardcoded company ID
+        this.companyId = 'biz_6GuEa8lMu5p9yl'; // Fixed: lowercase 'l' after 8
         
-        // Set up message listener for Whop iframe communication
-        window.addEventListener('message', this.handleWhopMessage.bind(this));
+        console.log('Using company ID:', this.companyId);
         
-        // Use the hardcoded ID directly for now
-        console.log('Using hardcoded company ID for testing:', companyIdToUse);
-        this.companyId = companyIdToUse;
-        
-        // Proceed to load members immediately with the hardcoded ID
+        // Load members immediately
         await this.loadMembers();
     }
 
     handleWhopMessage(event) {
-        // No-op: We are bypassing Whop context for now
+        // Optional: Handle Whop messages if needed in the future
+        console.log('Received message from Whop:', event.data);
     }
 
     sendWhopMessage(message) {
-        // No-op: We are bypassing Whop context for now
+        // Optional: Send messages to Whop if needed in the future
+        if (window.parent !== window) {
+            console.log('Sending message to Whop:', message);
+            window.parent.postMessage(message, '*');
+        }
     }
 
     async handleContext(context) {
-        // No-op: We are bypassing Whop context for now
+        // Optional: Handle Whop context if needed in the future
+        console.log('Handling context:', context);
     }
 
     async loadMembers() {
@@ -132,7 +133,7 @@ class WhopMemberDirectory {
     }
 
     formatCustomFields(customFields) {
-        if (Object.keys(customFields).length === 0) {
+        if (!customFields || Object.keys(customFields).length === 0) {
             return '<span style="color: #666;">No custom fields</span>';
         }
         
