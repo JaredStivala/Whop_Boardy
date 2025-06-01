@@ -11,7 +11,7 @@ class WhopMemberDirectory {
         console.log('Initializing Whop Member Directory...');
         
         // TEMPORARY: Hardcode company ID for testing
-        const companyIdToUse = 'biz_6GuEa8lMu5p9yI'; // Hardcoded ID for testing
+        const companyIdToUse = 'biz_6GuEa8lMu5p9yl'; // Hardcoded ID for testing
         
         // Set up message listener for Whop iframe communication
         window.addEventListener('message', this.handleWhopMessage.bind(this));
