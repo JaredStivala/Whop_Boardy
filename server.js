@@ -192,45 +192,39 @@ async function handleMembershipValid(data) {
     console.log('🔍 Webhook data.product object:', JSON.stringify(product, null, 2));
     console.log('🔍 Webhook data root keys:', Object.keys(data));
 
-    // Extract custom fields from the webhook data
+    // --- Extract Email --- 
+    const userEmail = user?.email || data.email || null;
+    console.log('📧 Extracted email:', userEmail);
+
+    // --- Extract Custom Fields ---
     let customFields = {};
     
-    // Try different possible locations for custom field data
-    const possibleCustomFieldKeys = [
-      'custom_fields',
-      'custom_field_responses', 
-      'metadata',
-      'form_responses',
-      'checkout_custom_fields'
+    const potentialCustomFieldSources = [
+      { key: 'custom_fields', data: data.custom_fields },
+      { key: 'custom_field_responses', data: data.custom_field_responses }, 
+      { key: 'metadata', data: data.metadata },
+      { key: 'form_responses', data: data.form_responses },
+      { key: 'checkout_custom_fields', data: data.checkout_custom_fields },
+      // Check user object for custom fields too
+      { key: 'user.custom_fields', data: user?.custom_fields },
+      { key: 'user.custom_field_responses', data: user?.custom_field_responses },
+      { key: 'user.metadata', data: user?.metadata },
+      { key: 'user.form_responses', data: user?.form_responses },
+      { key: 'user.checkout_custom_fields', data: user?.checkout_custom_fields },
     ];
 
-    possibleCustomFieldKeys.forEach(key => {
-      if (data[key]) {
-        console.log(`✅ Found potential custom fields in data.${key}:`, JSON.stringify(data[key], null, 2));
-        // Attempt to merge, handle if it's not a simple object
-        try {
-             customFields = { ...customFields, ...data[key] };
-        } catch (e) {
-             console.warn(`⚠️ Could not merge data.${key} (not a simple object?):`, data[key]);
-             customFields[key] = data[key]; // Store as is if not mergeable
+    potentialCustomFieldSources.forEach(source => {
+        if (source.data) {
+            console.log(`🔍 Found potential data in ${source.key}:`, JSON.stringify(source.data, null, 2));
+            // Check if the data is a plain object before attempting to merge
+            if (typeof source.data === 'object' && source.data !== null && !Array.isArray(source.data)) {
+                 console.log(`✅ Merging custom fields from ${source.key}`);
+                 customFields = { ...customFields, ...source.data };
+            } else {
+                 console.warn(`⚠️ Data in ${source.key} is not a mergeable object, skipping:`, source.data);
+            }
         }
-      }
     });
-
-    // Also check nested in user object (less common for form responses, but worth checking)
-    if (user) {
-       possibleCustomFieldKeys.forEach(key => {
-          if (user[key]) {
-            console.log(`✅ Found potential custom fields in data.user.${key}:`, JSON.stringify(user[key], null, 2));
-             try {
-                customFields = { ...customFields, ...user[key] };
-             } catch (e) {
-                console.warn(`⚠️ Could not merge data.user.${key} (not a simple object?):`, user[key]);
-                customFields[`user_${key}`] = user[key]; // Store as is if not mergeable
-             }
-          }
-       });
-    }
 
     console.log('📋 Final collected customFields before DB:', JSON.stringify(customFields, null, 2));
 
@@ -241,19 +235,13 @@ async function handleMembershipValid(data) {
         user_id, 
         membership_id,
         email,
-        username,
-        name,
-        profile_picture_url,
         custom_fields,
         status
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
+      VALUES ($1, $2, $3, $4, $5, 'active')
       ON CONFLICT (membership_id)
       DO UPDATE SET
         email = EXCLUDED.email,
-        username = EXCLUDED.username,
-        name = EXCLUDED.name,
-        profile_picture_url = EXCLUDED.profile_picture_url,
         custom_fields = EXCLUDED.custom_fields,
         status = 'active',
         updated_at = CURRENT_TIMESTAMP
@@ -261,10 +249,7 @@ async function handleMembershipValid(data) {
       companyId,
       userId,
       membershipId,
-      user?.email || null,
-      user?.username || null,
-      user?.name || user?.display_name || null,
-      user?.profile_pic_url || user?.profile_picture_url || null,
+      userEmail,
       JSON.stringify(customFields) // Ensure we stringify the potentially complex object
     ]);
 
