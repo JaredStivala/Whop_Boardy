@@ -351,17 +351,15 @@ initializeDatabase().then(() => {
   process.exit(1);
 });
 
-// Updated handleContext function with fallback companyId
-handleContext(context) {
+function handleContext(context) {
   const fallbackCompanyId = 'biz_6GuEa8IMu5p9yI'; // Replace this with your actual Whop company ID
-  this.companyId = context?.company?.id || fallbackCompanyId;
+  const companyId = context?.company?.id || fallbackCompanyId;
 
-  if (!this.companyId) {
+  if (!companyId) {
     console.error('❌ Company ID is still missing even after fallback.');
-    this.showError('Company ID is missing.');
-    return;
+    return null;
   }
 
-  console.log('✅ Using company ID:', this.companyId);
-  this.loadMembers();
+  console.log('✅ Using company ID:', companyId);
+  return companyId;
 }
