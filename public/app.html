@@ -29,78 +29,55 @@
         .header {
             text-align: center;
             margin-bottom: 40px;
-            padding: 30px 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 16px;
+            padding: 40px 20px; /* Increased padding */
+            background: #1a1a1a; /* Solid dark background */
+            border-radius: 12px; /* Slightly smaller border-radius */
             color: #fff;
+            border: 1px solid #2a2a2a; /* Subtle border */
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2); /* Subtle shadow */
         }
 
         .header h1 {
-            font-size: 2.2rem;
-            margin-bottom: 10px;
-            font-weight: 700;
+            font-size: 2rem; /* Slightly smaller */
+            margin-bottom: 8px; /* Adjusted margin */
+            font-weight: 600; /* Slightly less bold */
+            color: #e0e0e0; /* Lighter heading color */
         }
 
         .header p {
-            font-size: 1rem;
-            opacity: 0.9;
+            font-size: 0.95rem; /* Slightly smaller */
+            opacity: 0.7; /* Reduced opacity for subtitle */
+            margin-bottom: 20px; /* Added space below subtitle */
         }
 
         .stats {
             display: flex;
             justify-content: center;
-            gap: 30px;
-            margin: 25px 0 0; /* Added margin-top */
+            gap: 25px; /* Adjusted gap */
+            margin: 20px 0 0; /* Adjusted margin-top */
             flex-wrap: wrap;
         }
 
         .stat-item {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 15px 25px;
-            border-radius: 12px;
+            background: #2a2a2a; /* Darker background for stats */
+            padding: 12px 20px; /* Adjusted padding */
+            border-radius: 8px; /* Smaller border-radius */
             text-align: center;
-            backdrop-filter: blur(10px); /* Keep the blur effect */
-            border: 1px solid rgba(255, 255, 255, 0.2); /* Subtle border */
+            border: 1px solid #3a3a3a; /* Border matching background */
+            min-width: 120px; /* Minimum width for stat items */
         }
 
         .stat-number {
-            font-size: 1.8rem;
+            font-size: 1.6rem; /* Slightly smaller */
             font-weight: 700;
             display: block;
+            color: #667eea; /* Accent color for numbers */
         }
 
         .stat-label {
-            font-size: 0.85rem;
-            opacity: 0.8;
-        }
-
-        .search-filter {
-            background: #1a1a1a;
-            padding: 20px;
-            border-radius: 12px;
-            margin-bottom: 25px;
-            border: 1px solid #2a2a2a;
-        }
-
-        .search-input {
-            width: 100%;
-            padding: 12px 18px;
-            border: 1px solid #3a3a3a;
-            background: #0a0a0a;
-            color: #ffffff;
-            border-radius: 8px;
-            font-size: 0.95rem;
-            transition: all 0.2s;
-        }
-
-        .search-input:focus {
-            outline: none;
-            border-color: #667eea;
-            background: #0f0f0f;
-        }
-
-        .search-input::placeholder {
-            color: #666;
+            font-size: 0.8rem; /* Slightly smaller */
+            opacity: 0.9; /* Increased opacity */
+            color: #aaaaaa; /* Lighter color for labels */
         }
 
         /* New Table Styles */
@@ -225,15 +202,6 @@
             </div>
         </div>
 
-        <div class="search-filter">
-            <input 
-                type="text" 
-                class="search-input" 
-                placeholder="Search members by name, email, or custom fields..."
-                id="searchInput"
-            >
-        </div>
-
         <div id="loadingState" class="loading">
             Loading members...
         </div>
@@ -283,9 +251,6 @@
                 
                 // Request initial data from Whop
                 this.sendWhopMessage({ type: 'GET_CONTEXT' });
-                
-                // Set up search functionality
-                this.setupEventListeners();
             }
 
             handleWhopMessage(event) {
@@ -443,34 +408,6 @@
                     .replace(/>/g, "&gt;")
                     .replace(/"/g, "&quot;")
                     .replace(/'/g, "&#039;");
-            }
-
-            setupEventListeners() {
-                const searchInput = document.getElementById('searchInput');
-                if (searchInput) { // Added null check
-                   searchInput.addEventListener('input', (e) => {
-                       this.filterMembers(e.target.value);
-                   });
-                }
-            }
-
-            filterMembers(searchTerm) {
-                const term = searchTerm.toLowerCase().trim();
-                
-                if (!term) {
-                    this.filteredMembers = [...this.members];
-                } else {
-                    this.filteredMembers = this.members.filter(member => {
-                        const email = (member.email || '').toLowerCase();
-                        // Include custom fields in search
-                        const customFieldsString = JSON.stringify(member.waitlist_responses || member.custom_fields || {}).toLowerCase();
-                        
-                        // Removed name/username search as we are not displaying them currently
-                        return email.includes(term) || customFieldsString.includes(term);
-                    });
-                }
-                
-                this.renderMembers();
             }
 
             showContent() {
