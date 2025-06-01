@@ -377,7 +377,7 @@ initializeDatabase().then(() => {
 });
 
 function handleContext(context) {
-  const fallbackCompanyId = 'biz_6GuEa8IMu5p9yI'; // Replace this with your actual Whop company ID
+  const fallbackCompanyId = 'biz_6GuEa8lMu5p9yI'; // Replace this with your actual Whop company ID
   const companyId = context?.company?.id || fallbackCompanyId;
 
   if (!companyId) {
