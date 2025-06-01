@@ -296,6 +296,8 @@ app.get('/api/directory/:companyId', async (req, res) => {
       ORDER BY joined_at DESC
     `, [companyId, status]);
 
+    console.log("🔍 Raw DB result:", result.rows);
+    
     res.json({
       success: true,
       members: result.rows.map(member => ({
