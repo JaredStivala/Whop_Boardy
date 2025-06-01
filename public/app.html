@@ -16,7 +16,7 @@
             background: #0a0a0a;
             color: #ffffff;
             line-height: 1.6;
-            height: 100vh;
+            min-height: 100vh; /* Use min-height for content that might not fill the screen */
             overflow-x: hidden;
         }
 
@@ -24,8 +24,6 @@
             max-width: 1400px;
             margin: 0 auto;
             padding: 20px;
-            height: 100%;
-            overflow-y: auto;
         }
 
         .header {
@@ -34,6 +32,7 @@
             padding: 30px 20px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             border-radius: 16px;
+            color: #fff;
         }
 
         .header h1 {
@@ -51,7 +50,7 @@
             display: flex;
             justify-content: center;
             gap: 30px;
-            margin: 25px 0;
+            margin: 25px 0 0; /* Added margin-top */
             flex-wrap: wrap;
         }
 
@@ -60,7 +59,8 @@
             padding: 15px 25px;
             border-radius: 12px;
             text-align: center;
-            backdrop-filter: blur(10px);
+            backdrop-filter: blur(10px); /* Keep the blur effect */
+            border: 1px solid rgba(255, 255, 255, 0.2); /* Subtle border */
         }
 
         .stat-number {
@@ -103,86 +103,62 @@
             color: #666;
         }
 
-        .members-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-            gap: 20px;
+        /* New Table Styles */
+        .members-table {
+            width: 100%;
+            border-collapse: collapse;
             margin-bottom: 40px;
-        }
-
-        .member-card {
-            background: #1a1a1a;
-            border-radius: 12px;
-            padding: 20px;
-            transition: all 0.2s;
+            background-color: #1a1a1a; /* Table background */
             border: 1px solid #2a2a2a;
+            border-radius: 12px; /* Apply border-radius to the container if needed */
+            overflow: hidden; /* Helps contain rounded corners */
         }
 
-        .member-card:hover {
-            transform: translateY(-2px);
-            border-color: #667eea;
-            box-shadow: 0 10px 25px -5px rgba(102, 126, 234, 0.2);
+        .members-table th,
+        .members-table td {
+            text-align: left;
+            padding: 15px;
+            border-bottom: 1px solid #2a2a2a; /* Separator line */
         }
 
-        .member-avatar {
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 1.3rem;
-            font-weight: 700;
-            margin-bottom: 12px;
-        }
-
-        .member-name {
-            font-size: 1.1rem;
+        .members-table th {
+            background-color: #2a2a2a; /* Header background */
+            font-size: 0.9rem;
             font-weight: 600;
-            margin-bottom: 6px;
-            color: #ffffff;
+            color: #aaaaaa; /* Header text color */
+            text-transform: uppercase;
         }
 
-        .member-email {
+        .members-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .members-table tbody tr:hover {
+            background-color: #222222; /* Hover effect */
+        }
+
+        .member-email-cell {
             color: #888;
-            margin-bottom: 12px;
+            font-size: 0.9rem;
+        }
+
+        .custom-fields-cell {
+             font-size: 0.9rem;
+             color: #cccccc;
+        }
+        
+        .custom-fields-cell strong {
+            color: #aaaaaa;
+            margin-right: 5px;
+        }
+
+        .joined-date-cell {
             font-size: 0.85rem;
-        }
-
-        .member-details {
-            border-top: 1px solid #2a2a2a;
-            padding-top: 12px;
-        }
-
-        .detail-item {
-            margin-bottom: 8px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-
-        .detail-label {
-            font-weight: 600;
-            color: #aaa;
-            min-width: 100px;
-            font-size: 0.85rem;
-        }
-
-        .detail-value {
-            color: #ccc;
-            flex: 1;
-            font-size: 0.85rem;
-        }
-
-        .joined-date {
-            font-size: 0.75rem;
             color: #666;
             text-align: right;
-            margin-top: 12px;
-            font-style: italic;
         }
+
+        /* End Table Styles */
 
         .loading {
             text-align: center;
@@ -271,8 +247,20 @@
             <p>Members will appear here once they join your community!</p>
         </div>
 
-        <div id="membersGrid" class="members-grid" style="display: none;">
-        </div>
+        <!-- Member Table -->
+        <table id="membersTable" class="members-table" style="display: none;">
+            <thead>
+                <tr>
+                    <th>Email</th>
+                    <th>Custom Fields</th>
+                    <th style="text-align: right;">Joined</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Member rows will be inserted here by JavaScript -->
+            </tbody>
+        </table>
+        <!-- End Member Table -->
     </div>
 
     <script>
@@ -347,13 +335,25 @@
                 try {
                     console.log(`Loading members for company: ${this.companyId}`);
                     
+                    // Make sure companyId is available before fetching
+                    if (!this.companyId) {
+                        console.error('Attempted to load members without companyId.');
+                        this.showError('Company ID is missing.');
+                        return;
+                    }
+
                     const response = await fetch(`/api/directory/${this.companyId}`);
                     
                     if (!response.ok) {
-                        throw new Error('Failed to fetch members');
+                        // Try to read error body if available
+                        const errorText = await response.text();
+                        console.error(`Failed to fetch members: ${response.status} - ${errorText}`);
+                        throw new Error(`Failed to fetch members: ${response.status} - ${response.statusText}`);
                     }
 
                     const data = await response.json();
+                    console.log('Members data received:', data);
+
                     this.members = data.members || [];
                     this.filteredMembers = [...this.members];
                     
@@ -363,7 +363,7 @@
                     
                 } catch (error) {
                     console.error('Error loading members:', error);
-                    this.showError();
+                    this.showError(`Failed to load members: ${error.message}`);
                 }
             }
 
@@ -373,56 +373,62 @@
                 const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
                 
                 const newThisMonth = this.members.filter(member => 
-                    new Date(member.joined_at) > thirtyDaysAgo
-                ).length;
+                    member.joined_at && new Date(member.joined_at) > thirtyDaysAgo
+                ).length; // Added check for member.joined_at
 
                 document.getElementById('totalMembers').textContent = totalMembers;
                 document.getElementById('newThisMonth').textContent = newThisMonth;
             }
 
             renderMembers() {
-                const grid = document.getElementById('membersGrid');
+                const tbody = document.getElementById('membersTable').querySelector('tbody');
+                tbody.innerHTML = ''; // Clear previous entries
                 
                 if (this.filteredMembers.length === 0) {
                     this.showNoMembers();
                     return;
                 }
 
-                grid.innerHTML = this.filteredMembers.map(member => this.createMemberCard(member)).join('');
+                this.filteredMembers.forEach(member => {
+                    tbody.appendChild(this.createMemberRow(member));
+                });
             }
 
-            createMemberCard(member) {
-                const name = member.name || member.username || 'Anonymous Member';
-                const email = member.email || 'No email provided';
-                const avatar = name.charAt(0).toUpperCase();
-                const joinedDate = new Date(member.joined_at).toLocaleDateString();
+            createMemberRow(member) {
+                const row = document.createElement('tr');
                 
-                // Extract custom fields
-                const customFields = member.waitlist_responses || member.custom_fields || {};
-                const customFieldsHtml = Object.entries(customFields)
+                const emailCell = document.createElement('td');
+                emailCell.classList.add('member-email-cell');
+                emailCell.textContent = this.escapeHtml(member.email || 'No email provided');
+                
+                const customFieldsCell = document.createElement('td');
+                customFieldsCell.classList.add('custom-fields-cell');
+                customFieldsCell.innerHTML = this.formatCustomFields(member.waitlist_responses || member.custom_fields || {});
+
+                const joinedDateCell = document.createElement('td');
+                joinedDateCell.classList.add('joined-date-cell');
+                joinedDateCell.textContent = member.joined_at ? new Date(member.joined_at).toLocaleDateString() : 'N/A';
+                joinedDateCell.style.textAlign = 'right'; // Align date right
+
+                row.appendChild(emailCell);
+                row.appendChild(customFieldsCell);
+                row.appendChild(joinedDateCell);
+                
+                return row;
+            }
+
+            formatCustomFields(customFields) {
+                if (Object.keys(customFields).length === 0) {
+                    return '<span style="color: #666;">No custom fields</span>';
+                }
+                
+                return Object.entries(customFields)
                     .filter(([key, value]) => value && value.toString().trim())
                     .map(([key, value]) => `
-                        <div class="detail-item">
-                            <span class="detail-label">${this.formatLabel(key)}:</span>
-                            <span class="detail-value">${this.escapeHtml(value.toString())}</span>
+                        <div>
+                            <strong>${this.formatLabel(key)}:</strong> ${this.escapeHtml(value.toString())}
                         </div>
                     `).join('');
-
-                return `
-                    <div class="member-card">
-                        <div class="member-avatar">${avatar}</div>
-                        <div class="member-name">${this.escapeHtml(name)}</div>
-                        <div class="member-email">${this.escapeHtml(email)}</div>
-                        
-                        ${customFieldsHtml ? `
-                            <div class="member-details">
-                                ${customFieldsHtml}
-                            </div>
-                        ` : ''}
-                        
-                        <div class="joined-date">Joined ${joinedDate}</div>
-                    </div>
-                `;
             }
 
             formatLabel(key) {
@@ -441,9 +447,11 @@
 
             setupEventListeners() {
                 const searchInput = document.getElementById('searchInput');
-                searchInput.addEventListener('input', (e) => {
-                    this.filterMembers(e.target.value);
-                });
+                if (searchInput) { // Added null check
+                   searchInput.addEventListener('input', (e) => {
+                       this.filterMembers(e.target.value);
+                   });
+                }
             }
 
             filterMembers(searchTerm) {
@@ -453,13 +461,12 @@
                     this.filteredMembers = [...this.members];
                 } else {
                     this.filteredMembers = this.members.filter(member => {
-                        const name = (member.name || member.username || '').toLowerCase();
                         const email = (member.email || '').toLowerCase();
-                        const customFields = JSON.stringify(member.waitlist_responses || member.custom_fields || {}).toLowerCase();
+                        // Include custom fields in search
+                        const customFieldsString = JSON.stringify(member.waitlist_responses || member.custom_fields || {}).toLowerCase();
                         
-                        return name.includes(term) || 
-                               email.includes(term) || 
-                               customFields.includes(term);
+                        // Removed name/username search as we are not displaying them currently
+                        return email.includes(term) || customFieldsString.includes(term);
                     });
                 }
                 
@@ -470,22 +477,28 @@
                 document.getElementById('loadingState').style.display = 'none';
                 document.getElementById('errorState').style.display = 'none';
                 document.getElementById('noMembersState').style.display = 'none';
-                document.getElementById('membersGrid').style.display = 'grid';
+                document.getElementById('membersTable').style.display = 'table'; // Show the table
             }
 
             showError(message = 'Failed to load members. Please try again later.') {
                 document.getElementById('loadingState').style.display = 'none';
-                document.getElementById('membersGrid').style.display = 'none';
+                document.getElementById('membersTable').style.display = 'none'; // Hide the table
                 document.getElementById('noMembersState').style.display = 'none';
-                document.getElementById('errorState').style.display = 'block';
-                document.getElementById('errorState').textContent = message;
+                const errorElement = document.getElementById('errorState');
+                if (errorElement) { // Added null check
+                    errorElement.style.display = 'block';
+                    errorElement.textContent = message;
+                }
             }
 
             showNoMembers() {
                 document.getElementById('loadingState').style.display = 'none';
-                document.getElementById('membersGrid').style.display = 'none';
+                document.getElementById('membersTable').style.display = 'none'; // Hide the table
                 document.getElementById('errorState').style.display = 'none';
-                document.getElementById('noMembersState').style.display = 'block';
+                const noMembersElement = document.getElementById('noMembersState');
+                 if (noMembersElement) { // Added null check
+                    noMembersElement.style.display = 'block';
+                 }
             }
         }
 
@@ -495,11 +508,12 @@
         });
 
         // Auto-refresh every 5 minutes
-        setInterval(() => {
-            if (window.whopDirectory && window.whopDirectory.companyId) {
-                window.whopDirectory.loadMembers();
-            }
-        }, 5 * 60 * 1000);
+        // setInterval(() => {
+        //     if (window.whopDirectory && window.whopDirectory.companyId) {
+        //         console.log('Auto-refreshing member list...');
+        //         window.whopDirectory.loadMembers();
+        //     }
+        // }, 5 * 60 * 1000); // Commented out auto-refresh for now
     </script>
 </body>
 </html>
