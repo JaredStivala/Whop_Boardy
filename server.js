@@ -350,3 +350,18 @@ initializeDatabase().then(() => {
   console.error('💥 Failed to start server:', error);
   process.exit(1);
 });
+
+// Updated handleContext function with fallback companyId
+handleContext(context) {
+  const fallbackCompanyId = 'biz_6GuEa8IMu5p9yI'; // Replace this with your actual Whop company ID
+  this.companyId = context?.company?.id || fallbackCompanyId;
+
+  if (!this.companyId) {
+    console.error('❌ Company ID is still missing even after fallback.');
+    this.showError('Company ID is missing.');
+    return;
+  }
+
+  console.log('✅ Using company ID:', this.companyId);
+  this.loadMembers();
+}
