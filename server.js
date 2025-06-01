@@ -91,25 +91,44 @@ app.post('/webhook/whop', async (req, res) => {
 
     // Verify webhook signature if secret is provided
     if (process.env.WHOP_WEBHOOK_SECRET) {
-      const signature = req.headers['x-whop-signature'];
-      
-      // Use the raw body buffer for verification
+      const signatureHeader = req.headers['x-whop-signature'];
       const payload = req.body; // req.body is the raw buffer from express.raw() for this route
+      const webhookSecret = process.env.WHOP_WEBHOOK_SECRET;
       
-      if (!signature || !payload) {
-          console.error('❌ Missing webhook signature or payload');
+      if (!signatureHeader || !payload) {
+          console.error('❌ Missing webhook signature header or payload');
           return res.status(401).json({ error: 'Missing signature or payload' });
       }
 
+      // Parse the signature header (format: t=timestamp,v1=signature)
+      const parts = signatureHeader.split(',');
+      const timestampPart = parts.find(p => p.startsWith('t='));
+      const signaturePart = parts.find(p => p.startsWith('v1='));
+
+      if (!timestampPart || !signaturePart) {
+          console.error('❌ Invalid signature header format');
+          return res.status(401).json({ error: 'Invalid signature header format' });
+      }
+
+      const timestamp = timestampPart.substring(2); // Remove 't='
+      const signature = signaturePart.substring(3); // Remove 'v1='
+
+      // Construct the string to sign: timestamp + '.' + rawBody
+      const signedPayload = `${timestamp}.${payload.toString()}`;
+      
       const expectedSignature = crypto
-        .createHmac('sha256', process.env.WHOP_WEBHOOK_SECRET)
-        .update(payload) // Update with the raw buffer
+        .createHmac('sha256', webhookSecret)
+        .update(signedPayload)
         .digest('hex');
       
-      console.log('Signature from header:', signature);
+      console.log('Signature from header (v1):', signature);
       console.log('Calculated signature:', expectedSignature);
 
-      if (signature !== expectedSignature) {
+      // Use timingSafeEqual to compare signatures securely
+      const signatureBuffer = Buffer.from(signature, 'hex');
+      const expectedSignatureBuffer = Buffer.from(expectedSignature, 'hex');
+
+      if (signatureBuffer.length !== expectedSignatureBuffer.length || !crypto.timingSafeEqual(signatureBuffer, expectedSignatureBuffer)) {
         console.error('❌ Invalid webhook signature');
         return res.status(401).json({ error: 'Invalid signature' });
       }
