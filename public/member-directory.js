@@ -25,7 +25,7 @@ class WhopMemberDirectory {
             console.log('Found company ID in URL:', companyId);
             this.companyId = companyId;
             await this.loadMembers();
-        } else if (DEBUG_COMPANY_ID !== 'biz_6GuEa8lMu5p9yI') {
+        } else if (DEBUG_COMPANY_ID && DEBUG_COMPANY_ID !== 'YOUR_ACTUAL_COMPANY_ID') {
             // Use debug company ID if set
             console.log('Using DEBUG company ID:', DEBUG_COMPANY_ID);
             this.companyId = DEBUG_COMPANY_ID;
