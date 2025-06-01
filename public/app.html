@@ -29,80 +29,113 @@
         .header {
             text-align: center;
             margin-bottom: 40px;
-            padding: 40px 20px; /* Increased padding */
-            background: #1a1a1a; /* Solid dark background */
-            border-radius: 12px; /* Slightly smaller border-radius */
+            padding: 50px 20px; /* Increased padding further */
+            background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%); /* New techy gradient */
+            border-radius: 16px; /* Larger border-radius */
             color: #fff;
-            border: 1px solid #2a2a2a; /* Subtle border */
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2); /* Subtle shadow */
+            border: 1px solid #3a3a3a; /* Adjusted border color */
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4); /* More pronounced shadow */
+            position: relative; /* Needed for pseudo-elements */
+            overflow: hidden; /* Hide pseudo-element overflow */
+        }
+
+        /* Optional: Add a subtle tech pattern or overlay */
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, rgba(70, 130, 180, 0.1) 0%, rgba(70, 130, 180, 0) 70%);
+            opacity: 0.6;
+            pointer-events: none;
         }
 
         .header h1 {
-            font-size: 2rem; /* Slightly smaller */
-            margin-bottom: 8px; /* Adjusted margin */
-            font-weight: 600; /* Slightly less bold */
-            color: #e0e0e0; /* Lighter heading color */
+            font-size: 2.8rem; /* Larger heading */
+            margin-bottom: 10px; /* Adjusted margin */
+            font-weight: 700; /* Bolder heading */
+            color: #ffffff; /* White heading color */
+            text-shadow: 0 0 10px rgba(102, 126, 234, 0.5); /* Subtle text glow */
+            position: relative; /* Ensure text is above pseudo-element */
+            z-index: 1; /* Ensure text is above pseudo-element */
         }
 
         .header p {
-            font-size: 0.95rem; /* Slightly smaller */
-            opacity: 0.7; /* Reduced opacity for subtitle */
-            margin-bottom: 20px; /* Added space below subtitle */
+            font-size: 1.1rem; /* Larger subtitle */
+            opacity: 0.8; /* Increased opacity */
+            margin-bottom: 30px; /* More space below subtitle */
+            color: #e0e0e0; /* Lighter color for subtitle */
+            position: relative; /* Ensure text is above pseudo-element */
+            z-index: 1; /* Ensure text is above pseudo-element */
         }
 
         .stats {
             display: flex;
             justify-content: center;
-            gap: 25px; /* Adjusted gap */
-            margin: 20px 0 0; /* Adjusted margin-top */
+            gap: 30px; /* Adjusted gap */
+            margin: 30px 0 0; /* Adjusted margin-top */
             flex-wrap: wrap;
+            position: relative; /* Ensure stats are above pseudo-element */
+            z-index: 1; /* Ensure stats are above pseudo-element */
         }
 
         .stat-item {
-            background: #2a2a2a; /* Darker background for stats */
-            padding: 12px 20px; /* Adjusted padding */
-            border-radius: 8px; /* Smaller border-radius */
+            background: rgba(44, 83, 100, 0.5); /* Semi-transparent background using gradient colors */
+            padding: 15px 25px; /* Adjusted padding */
+            border-radius: 10px; /* Slightly smaller border-radius */
             text-align: center;
-            border: 1px solid #3a3a3a; /* Border matching background */
-            min-width: 120px; /* Minimum width for stat items */
+            border: 1px solid rgba(70, 130, 180, 0.3); /* Border matching accent color */
+            backdrop-filter: blur(5px); /* Subtle blur */
+            min-width: 140px; /* Minimum width for stat items */
+            transition: all 0.3s ease; /* Smooth transition */
         }
 
+         .stat-item:hover {
+            background: rgba(70, 130, 180, 0.3); /* Accent color background on hover */
+            border-color: #667eea; /* Accent border on hover */
+            transform: translateY(-3px); /* Lift effect on hover */
+         }
+
         .stat-number {
-            font-size: 1.6rem; /* Slightly smaller */
+            font-size: 2rem; /* Larger stat number */
             font-weight: 700;
             display: block;
-            color: #667eea; /* Accent color for numbers */
+            color: #00ffff; /* Cyan accent color */
+            text-shadow: 0 0 8px rgba(0, 255, 255, 0.4); /* Subtle glow */
         }
 
         .stat-label {
-            font-size: 0.8rem; /* Slightly smaller */
+            font-size: 0.9rem; /* Slightly larger label */
             opacity: 0.9; /* Increased opacity */
-            color: #aaaaaa; /* Lighter color for labels */
+            color: #b0e0e6; /* Light blue color for labels */
         }
 
         /* New Table Styles */
         .members-table {
             width: 100%;
             border-collapse: collapse;
+            margin-top: 30px; /* Added space above table */
             margin-bottom: 40px;
-            background-color: #1a1a1a; /* Table background */
+            background-color: #1a1a1a;
             border: 1px solid #2a2a2a;
-            border-radius: 12px; /* Apply border-radius to the container if needed */
-            overflow: hidden; /* Helps contain rounded corners */
+            border-radius: 12px;
+            overflow: hidden;
         }
 
         .members-table th,
         .members-table td {
             text-align: left;
             padding: 15px;
-            border-bottom: 1px solid #2a2a2a; /* Separator line */
+            border-bottom: 1px solid #2a2a2a;
         }
 
         .members-table th {
-            background-color: #2a2a2a; /* Header background */
-            font-size: 0.9rem;
+            background-color: #2a2a2a;
+            font-size: 0.95rem; /* Slightly larger font */
             font-weight: 600;
-            color: #aaaaaa; /* Header text color */
+            color: #aaaaaa;
             text-transform: uppercase;
         }
 
@@ -111,11 +144,11 @@
         }
 
         .members-table tbody tr:hover {
-            background-color: #222222; /* Hover effect */
+            background-color: #222222;
         }
 
         .member-email-cell {
-            color: #888;
+            color: #b0b0b0; /* Lighter email color */
             font-size: 0.9rem;
         }
 
@@ -339,7 +372,7 @@
                 
                 const newThisMonth = this.members.filter(member => 
                     member.joined_at && new Date(member.joined_at) > thirtyDaysAgo
-                ).length; // Added check for member.joined_at
+                ).length;
 
                 document.getElementById('totalMembers').textContent = totalMembers;
                 document.getElementById('newThisMonth').textContent = newThisMonth;
@@ -349,12 +382,30 @@
                 const tbody = document.getElementById('membersTable').querySelector('tbody');
                 tbody.innerHTML = ''; // Clear previous entries
                 
-                if (this.filteredMembers.length === 0) {
+                // --- Add Hardcoded Test Member Entry ---
+                const testMember = {
+                    id: 'test-123',
+                    user_id: 'user-test',
+                    membership_id: 'mem-test',
+                    email: 'test@example.com',
+                    waitlist_responses: {
+                        'Question 1': 'Answer 1',
+                        'Another Field': 'Some Value',
+                        'Empty Field': '',
+                    },
+                    joined_at: new Date().toISOString(), // Use current date/time
+                    status: 'active',
+                };
+                // Add test member to the beginning of the list for visibility
+                const membersToRender = [testMember, ...this.filteredMembers];
+                // --- End Hardcoded Test Member Entry ---
+
+                if (membersToRender.length === 0) {
                     this.showNoMembers();
                     return;
                 }
 
-                this.filteredMembers.forEach(member => {
+                membersToRender.forEach(member => {
                     tbody.appendChild(this.createMemberRow(member));
                 });
             }
@@ -373,7 +424,7 @@
                 const joinedDateCell = document.createElement('td');
                 joinedDateCell.classList.add('joined-date-cell');
                 joinedDateCell.textContent = member.joined_at ? new Date(member.joined_at).toLocaleDateString() : 'N/A';
-                joinedDateCell.style.textAlign = 'right'; // Align date right
+                joinedDateCell.style.textAlign = 'right';
 
                 row.appendChild(emailCell);
                 row.appendChild(customFieldsCell);
@@ -414,15 +465,15 @@
                 document.getElementById('loadingState').style.display = 'none';
                 document.getElementById('errorState').style.display = 'none';
                 document.getElementById('noMembersState').style.display = 'none';
-                document.getElementById('membersTable').style.display = 'table'; // Show the table
+                document.getElementById('membersTable').style.display = 'table';
             }
 
             showError(message = 'Failed to load members. Please try again later.') {
                 document.getElementById('loadingState').style.display = 'none';
-                document.getElementById('membersTable').style.display = 'none'; // Hide the table
+                document.getElementById('membersTable').style.display = 'none';
                 document.getElementById('noMembersState').style.display = 'none';
                 const errorElement = document.getElementById('errorState');
-                if (errorElement) { // Added null check
+                if (errorElement) {
                     errorElement.style.display = 'block';
                     errorElement.textContent = message;
                 }
@@ -430,10 +481,10 @@
 
             showNoMembers() {
                 document.getElementById('loadingState').style.display = 'none';
-                document.getElementById('membersTable').style.display = 'none'; // Hide the table
+                document.getElementById('membersTable').style.display = 'none';
                 document.getElementById('errorState').style.display = 'none';
                 const noMembersElement = document.getElementById('noMembersState');
-                 if (noMembersElement) { // Added null check
+                 if (noMembersElement) {
                     noMembersElement.style.display = 'block';
                  }
             }
@@ -450,7 +501,7 @@
         //         console.log('Auto-refreshing member list...');
         //         window.whopDirectory.loadMembers();
         //     }
-        // }, 5 * 60 * 1000); // Commented out auto-refresh for now
+        // }, 5 * 60 * 1000);
     </script>
 </body>
 </html>
