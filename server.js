@@ -16,7 +16,7 @@ const pool = new Pool({
 
 pool.on('error', (err, client) => {
     console.error('🟥 DATABASE POOL ERROR:', err.message, err.stack);
-  
+});
 
 // Middleware - IMPORTANT: Configure CORS for Whop iframe
 app.use(cors({
