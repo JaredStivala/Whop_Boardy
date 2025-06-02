@@ -56,14 +56,14 @@
     <div id="loadingScreen">
         <div class="loading-spinner"></div>
         <div class="loading-text">Loading Member Directory</div>
-        <div class="loading-subtext">Initializing application...</div>
+        <div class="loading-subtext">Detecting your community...</div>
     </div>
 
     <!-- Main App Container (will be populated by JavaScript) -->
     <div id="app"></div>
 
     <script>
-        // Member Directory Application
+        // Member Directory Application - FIXED VERSION
         class MemberDirectory {
             constructor() {
                 this.members = [];
@@ -72,6 +72,7 @@
                 this.sortField = 'joined_at';
                 this.sortDirection = 'desc';
                 this.loading = false;
+                this.currentCompanyId = null;
                 this.init();
             }
 
@@ -849,12 +850,15 @@
                 }
             }
 
+            // 🔧 FIX: Use auto-detection for company ID (multi-tenant support)
             async loadMembers() {
                 this.setLoading(true);
                 
                 try {
                     console.log('🔍 Loading members from API...');
-                    const response = await fetch('/api/members/biz_6GuEa8lMu5p9yl');
+                    
+                    // Use auto-detection endpoint instead of hardcoded company ID
+                    const response = await fetch('/api/members/auto');
                     
                     console.log('📡 Response status:', response.status);
                     console.log('📡 Response headers:', response.headers.get('content-type'));
@@ -875,7 +879,12 @@
                     
                     if (data.success) {
                         this.members = data.members || [];
-                        console.log(`📊 Loaded ${this.members.length} members`);
+                        this.currentCompanyId = data.company_id;
+                        console.log(`📊 Loaded ${this.members.length} members for company ${data.company_id}`);
+                        
+                        // Update header with company info if available
+                        this.updateCompanyInfo(data.company_id);
+                        
                         this.filterAndRenderMembers();
                         this.updateStats();
                     } else {
@@ -888,6 +897,29 @@
                 } finally {
                     this.setLoading(false);
                 }
+            }
+
+            updateCompanyInfo(companyId) {
+                if (companyId) {
+                    const headerTitle = document.querySelector('.header-title p');
+                    if (headerTitle) {
+                        headerTitle.textContent = `Connect with fellow community members • ${companyId}`;
+                    }
+                }
+            }
+
+            async loadAvailableCompanies() {
+                try {
+                    const response = await fetch('/api/companies');
+                    if (response.ok) {
+                        const data = await response.json();
+                        console.log('🏢 Available companies:', data.companies);
+                        return data.companies;
+                    }
+                } catch (error) {
+                    console.warn('Could not load available companies:', error);
+                }
+                return [];
             }
 
             setLoading(loading) {
