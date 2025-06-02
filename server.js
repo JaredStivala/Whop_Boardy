@@ -433,7 +433,7 @@ async function getAvailableCompanies() {
       WHERE c.status = 'active'
       GROUP BY c.company_id, c.company_name
       ORDER BY member_count DESC, latest_activity DESC
-      LIMIT 10
+      LIMIT 100
     `);
     return result.rows;
   } catch (error) {
@@ -453,6 +453,7 @@ app.post('/webhook/whop', async (req, res) => {
     const { event_type, data } = req.body;
     
     if (!event_type || !data) {
+      console.error('❌ Invalid webhook payload - missing event_type or data');
       return res.status(400).json({ error: 'Invalid webhook payload' });
     }
 
@@ -461,13 +462,26 @@ app.post('/webhook/whop', async (req, res) => {
     
     if (!companyId) {
       console.error('❌ No company ID found in webhook');
+      console.error('📦 Available data keys:', Object.keys(data));
+      console.error('📦 Headers:', Object.keys(req.headers));
       return res.status(400).json({ 
         error: 'No company ID found in webhook payload',
-        received_data: Object.keys(data)
+        received_data: Object.keys(data),
+        received_headers: Object.keys(req.headers)
       });
     }
 
     console.log(`📨 Processing ${event_type} for company ${companyId}`);
+    
+    // Log member count before processing
+    try {
+      const beforeCount = await pool.query(`
+        SELECT COUNT(*) as count FROM whop_members WHERE company_id = $1 AND status = 'active'
+      `, [companyId]);
+      console.log(`📊 Current member count for ${companyId}: ${beforeCount.rows[0].count}`);
+    } catch (error) {
+      console.error('⚠️ Could not get member count:', error);
+    }
 
     // Handle different webhook events
     switch (event_type) {
@@ -480,6 +494,10 @@ app.post('/webhook/whop', async (req, res) => {
       case 'membership.went_valid':
       case 'membership_created':
       case 'membership.created':
+      case 'user_joined':
+      case 'user.joined':
+      case 'member_added':
+      case 'member.added':
         await handleMembershipValid(companyId, data);
         break;
         
@@ -487,18 +505,42 @@ app.post('/webhook/whop', async (req, res) => {
       case 'membership.went_invalid':
       case 'membership_cancelled':
       case 'membership.cancelled':
+      case 'user_left':
+      case 'user.left':
+      case 'member_removed':
+      case 'member.removed':
         await handleMembershipInvalid(companyId, data);
+        break;
+        
+      case 'membership_updated':
+      case 'membership.updated':
+      case 'user_updated':
+      case 'user.updated':
+        await handleMembershipUpdate(companyId, data);
         break;
         
       default:
         console.log(`ℹ️ Unhandled event type: ${event_type}`);
+        console.log(`📦 Event data:`, JSON.stringify(data, null, 2));
+    }
+
+    
+    // Log member count after processing
+    try {
+      const afterCount = await pool.query(`
+        SELECT COUNT(*) as count FROM whop_members WHERE company_id = $1 AND status = 'active'
+      `, [companyId]);
+      console.log(`📊 Member count after processing: ${afterCount.rows[0].count}`);
+    } catch (error) {
+      console.error('⚠️ Could not get updated member count:', error);
     }
 
     res.json({ 
       success: true, 
       event_type,
       company_id: companyId,
-      message: 'Webhook processed successfully'
+      message: 'Webhook processed successfully',
+      timestamp: new Date().toISOString()
     });
 
   } catch (error) {
@@ -542,6 +584,7 @@ async function handleMembershipValid(companyId, data) {
   }
 
   console.log(`👤 Adding member ${userId} to company ${companyId}`);
+  console.log('📦 Member data:', JSON.stringify(data, null, 2));
   
   // Ensure company exists
   await ensureCompanyExists(companyId);
@@ -559,8 +602,15 @@ async function handleMembershipValid(companyId, data) {
     }
   }
 
+  // Extract custom fields from multiple possible locations
+  const customFields = data.custom_field_responses || 
+                      data.waitlist_responses || 
+                      data.custom_fields || 
+                      data.responses || 
+                      {};
+
   try {
-    await pool.query(`
+    const result = await pool.query(`
       INSERT INTO whop_members (
         user_id, membership_id, company_id, email, name, username, 
         custom_fields, joined_at, status
@@ -574,20 +624,32 @@ async function handleMembershipValid(companyId, data) {
         custom_fields = EXCLUDED.custom_fields,
         status = 'active',
         updated_at = CURRENT_TIMESTAMP
+      RETURNING id, user_id, name, email
     `, [
       userId,
       membershipId,
       companyId,
       data.email || null,
-      data.name || null,
+      data.name || data.display_name || null,
       data.username || null,
-      JSON.stringify(data.custom_field_responses || data.waitlist_responses || {}),
+      JSON.stringify(customFields),
       joinedAt
     ]);
     
-    console.log(`✅ Member ${userId} added to ${companyId}`);
+    const member = result.rows[0];
+    console.log(`✅ Member ${userId} (${member.name || 'Anonymous'}) added to ${companyId}`);
+    console.log(`📊 Member ID: ${member.id}, Email: ${member.email || 'none'}`);
+    
+    // Update company activity
+    await pool.query(`
+      UPDATE whop_companies 
+      SET last_activity = CURRENT_TIMESTAMP 
+      WHERE company_id = $1
+    `, [companyId]);
+    
   } catch (error) {
     console.error('❌ Error adding member:', error);
+    console.error('📦 Failed data:', { userId, companyId, membershipId, customFields });
   }
 }
 
@@ -603,15 +665,73 @@ async function handleMembershipInvalid(companyId, data) {
   console.log(`👤 Removing member ${userId} from company ${companyId}`);
   
   try {
-    await pool.query(`
+    const result = await pool.query(`
       UPDATE whop_members 
       SET status = 'inactive', updated_at = CURRENT_TIMESTAMP
       WHERE user_id = $1 AND company_id = $2
+      RETURNING name, email
     `, [userId, companyId]);
     
-    console.log(`✅ Member ${userId} set to inactive in ${companyId}`);
+    if (result.rows.length > 0) {
+      const member = result.rows[0];
+      console.log(`✅ Member ${userId} (${member.name || 'Anonymous'}) set to inactive in ${companyId}`);
+    } else {
+      console.log(`⚠️ Member ${userId} not found in ${companyId}`);
+    }
   } catch (error) {
     console.error('❌ Error updating member status:', error);
+  }
+}
+
+// Handle membership updates
+async function handleMembershipUpdate(companyId, data) {
+  const userId = data.user_id || data.user;
+  
+  if (!userId) {
+    console.error('❌ No user_id in membership update webhook');
+    return;
+  }
+
+  console.log(`👤 Updating member ${userId} in company ${companyId}`);
+  console.log('📦 Update data:', JSON.stringify(data, null, 2));
+  
+  // Extract custom fields from multiple possible locations
+  const customFields = data.custom_field_responses || 
+                      data.waitlist_responses || 
+                      data.custom_fields || 
+                      data.responses || 
+                      {};
+
+  try {
+    const result = await pool.query(`
+      UPDATE whop_members 
+      SET 
+        email = COALESCE($3, email),
+        name = COALESCE($4, name),
+        username = COALESCE($5, username),
+        custom_fields = COALESCE($6, custom_fields),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE user_id = $1 AND company_id = $2
+      RETURNING id, name, email
+    `, [
+      userId,
+      companyId,
+      data.email || null,
+      data.name || data.display_name || null,
+      data.username || null,
+      Object.keys(customFields).length > 0 ? JSON.stringify(customFields) : null
+    ]);
+    
+    if (result.rows.length > 0) {
+      const member = result.rows[0];
+      console.log(`✅ Member ${userId} (${member.name || 'Anonymous'}) updated in ${companyId}`);
+    } else {
+      console.log(`⚠️ Member ${userId} not found for update in ${companyId}, treating as new member`);
+      // If member doesn't exist, treat as new member
+      await handleMembershipValid(companyId, data);
+    }
+  } catch (error) {
+    console.error('❌ Error updating member:', error);
   }
 }
 
