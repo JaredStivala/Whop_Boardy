@@ -38,18 +38,24 @@ app.use((req, res, next) => {
 
 // Enhanced request logging with installation detection
 app.use((req, res, next) => {
-  const companyId = extractCompanyId(req);
-  const isAppView = req.path === '/' || req.path === '/index.html';
+  // Skip company detection for static resources and system requests
+  const skipDetectionPaths = ['/favicon.ico', '/robots.txt', '/sitemap.xml', '.css', '.js', '.png', '.jpg', '.svg'];
+  const shouldSkipDetection = skipDetectionPaths.some(path => req.path.includes(path));
   
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path} [Company: ${companyId || 'auto-detect'}] ${isAppView ? '[APP_VIEW]' : ''}`);
-  
-  if (req.headers.referer) {
-    console.log(`   Referer: ${req.headers.referer}`);
-  }
-  
-  // Log Whop-specific headers for debugging
-  if (req.headers['x-page-id'] || req.headers['x-whop-company-id']) {
-    console.log(`   Whop Headers: page-id=${req.headers['x-page-id']}, company-id=${req.headers['x-whop-company-id']}`);
+  if (!shouldSkipDetection) {
+    const companyId = extractCompanyId(req);
+    const isAppView = req.path === '/' || req.path === '/index.html';
+    
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.path} [Company: ${companyId || 'auto-detect'}] ${isAppView ? '[APP_VIEW]' : ''}`);
+    
+    if (req.headers.referer) {
+      console.log(`   Referer: ${req.headers.referer}`);
+    }
+    
+    // Log Whop-specific headers for debugging
+    if (req.headers['x-page-id'] || req.headers['x-whop-company-id']) {
+      console.log(`   Whop Headers: page-id=${req.headers['x-page-id']}, company-id=${req.headers['x-whop-company-id']}`);
+    }
   }
   
   next();
@@ -266,20 +272,26 @@ function extractCompanyId(req) {
 
 // NEW: Extract company ID from Whop's internal app structure
 function extractCompanyFromWhopApps(referer) {
-  if (!referer) return null;
+  if (!referer || typeof referer !== 'string') return null;
   
   console.log(`🔍 WHOP APPS EXTRACTION: Analyzing ${referer}`);
   
+  // Skip obviously non-Whop URLs
+  if (!referer.includes('whop')) {
+    console.log(`❌ Not a Whop URL: ${referer}`);
+    return null;
+  }
+  
   // Whop's internal app structure: https://[company-id].apps.whop.com/
-  const whopAppsPattern = /^https?:\/\/([^\.]+)\.apps\.whop\.com/;
+  const whopAppsPattern = /^https?:\/\/([a-zA-Z0-9]+)\.apps\.whop\.com/;
   const match = referer.match(whopAppsPattern);
   
-  if (match && match[1]) {
+  if (match && match[1] && match[1].length > 3) { // Ensure company ID is reasonable length
     console.log(`🎯 ✅ WHOP APPS COMPANY ID EXTRACTED: ${match[1]}`);
     return match[1];
   }
   
-  console.log(`❌ No Whop apps pattern found in: ${referer}`);
+  console.log(`❌ No valid Whop apps pattern found in: ${referer}`);
   return null;
 }
 
@@ -554,10 +566,11 @@ app.get('/api/members/:companyId?', async (req, res) => {
     
     return res.status(400).json({
       success: false,
-      error: 'Unable to detect company ID',
-      help: 'This app should be accessed from within your Whop dashboard',
+      error: 'Company auto-detection failed',
+      help: 'Please access this app from within your Whop dashboard where it was installed',
       available_companies: availableCompanies,
       debug: {
+        original_param: req.params.companyId,
         extracted_id: extractCompanyId(req),
         referer: req.headers.referer,
         installation_result: installationResult,
@@ -567,19 +580,20 @@ app.get('/api/members/:companyId?', async (req, res) => {
           original_url: req.originalUrl,
           full_url: `${req.get('host')}${req.originalUrl}`
         }
-      }
+      },
+      suggestion: 'If you are trying to access this app, please visit it through your Whop dashboard or provide a company ID in the URL'
     });
   }
   
   try {
-    // Ensure we use the final detected company ID for the database query
-    const finalCompanyId = installationResult?.companyId || companyId;
+    // Ensure we use the correct detected company ID for the database query
+    let queryCompanyId = installationResult?.companyId || companyId;
     
-    if (!finalCompanyId || finalCompanyId === 'auto') {
+    if (!queryCompanyId || queryCompanyId === 'auto') {
       throw new Error('No valid company ID detected');
     }
     
-    console.log(`🗄️ Querying database for company: ${finalCompanyId}`);
+    console.log(`🗄️ Querying database for company: ${queryCompanyId}`);
     
     // Get members for this company - BACKWARD COMPATIBLE QUERY
     const result = await pool.query(`
@@ -591,7 +605,7 @@ app.get('/api/members/:companyId?', async (req, res) => {
       RIGHT JOIN whop_companies c ON m.company_id = c.company_id
       WHERE c.company_id = $1 AND c.status = 'active'
       ORDER BY m.joined_at DESC
-    `, [finalCompanyId]);
+    `, [queryCompanyId]);
     
     const members = result.rows
       .filter(row => row.user_id) // Only include actual members
@@ -612,17 +626,17 @@ app.get('/api/members/:companyId?', async (req, res) => {
     const companyInfo = result.rows[0] || {};
     const isNewDirectory = installationResult?.isNewInstallation || false;
 
-    console.log(`✅ Returning ${members.length} members for ${finalCompanyId} (${isNewDirectory ? 'NEW' : 'EXISTING'} directory)`);
+    console.log(`✅ Returning ${members.length} members for ${queryCompanyId} (${isNewDirectory ? 'NEW' : 'EXISTING'} directory)`);
 
     // Ensure we return the detected company ID, not "auto"
-    const finalCompanyId = installationResult?.companyId || companyId;
+    const responseCompanyId = installationResult?.companyId || companyId;
     
     res.json({
       success: true,
       members: members,
       count: members.length,
-      company_id: finalCompanyId,  // Use the detected ID, not the "auto" parameter
-      company_name: companyInfo.company_name || generateCompanyName(finalCompanyId),
+      company_id: responseCompanyId,  // Use the detected ID, not the "auto" parameter
+      company_name: companyInfo.company_name || generateCompanyName(responseCompanyId),
       is_new_installation: isNewDirectory,
       directory_created: companyInfo.directory_created,
       detection_method: installationResult ? 'whop_apps_auto_detect' : 'manual',
@@ -640,12 +654,12 @@ app.get('/api/members/:companyId?', async (req, res) => {
     });
 
   } catch (error) {
-    const finalCompanyId = installationResult?.companyId || companyId;
+    const errorCompanyId = installationResult?.companyId || companyId;
     console.error('❌ Error fetching members:', error);
     res.status(500).json({
       success: false,
       error: error.message,
-      company_id: finalCompanyId === 'auto' ? 'detection_failed' : finalCompanyId
+      company_id: errorCompanyId === 'auto' ? 'detection_failed' : errorCompanyId
     });
   }
 });
@@ -992,6 +1006,16 @@ async function ensureCompanyExists(companyId) {
 }
 
 // ==================== FRONTEND ROUTES WITH INSTALLATION DETECTION ====================
+
+// Handle favicon and other static assets (prevent company detection attempts)
+app.get('/favicon.ico', (req, res) => {
+  res.status(204).end(); // No Content
+});
+
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain');
+  res.send('User-agent: *\nDisallow: /api/\nAllow: /');
+});
 
 // Main app route with installation detection
 app.get('/', async (req, res) => {
