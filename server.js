@@ -562,13 +562,8 @@ app.post('/webhook/whop', async (req, res) => {
       console.error('⚠️ Could not get member count:', error);
     }
 
-    // Handle different webhook events
+    // Handle different webhook events (only membership events are available)
     switch (eventType) {
-      case 'app_installed':
-      case 'app.installed':
-        await handleAppInstallation(companyId, data);
-        break;
-        
       case 'membership_went_valid':
       case 'membership.went_valid':
       case 'membership_created':
@@ -633,31 +628,7 @@ app.post('/webhook/whop', async (req, res) => {
   }
 });
 
-// Handle app installation
-async function handleAppInstallation(companyId, data) {
-  console.log(`🎉 App installed for company: ${companyId}`);
-  
-  try {
-    // Extract additional info from installation data
-    const companyName = data.company_name || data.business_name || companyId;
-    
-    await pool.query(`
-      INSERT INTO whop_companies (company_id, company_name, installed_at) 
-      VALUES ($1, $2, CURRENT_TIMESTAMP)
-      ON CONFLICT (company_id) 
-      DO UPDATE SET 
-        company_name = EXCLUDED.company_name,
-        last_activity = CURRENT_TIMESTAMP,
-        status = 'active'
-    `, [companyId, companyName]);
-    
-    console.log(`✅ Company ${companyId} registered successfully`);
-  } catch (error) {
-    console.error('❌ Error registering company:', error);
-  }
-}
-
-// Handle valid membership
+// Handle valid membership - adds members to existing directories
 async function handleMembershipValid(companyId, data) {
   const userId = data.user_id || data.user;
   const membershipId = data.id || data.membership_id;
@@ -668,11 +639,32 @@ async function handleMembershipValid(companyId, data) {
     return;
   }
 
-  console.log(`👤 Adding member ${userId} to company ${companyId}`);
-  console.log('📦 Member data:', JSON.stringify(data, null, 2));
+  console.log(`👤 MEMBER JOIN: Processing ${userId} for company ${companyId}`);
+  console.log('📦 Full webhook data for member extraction:', JSON.stringify(data, null, 2));
   
-  // Ensure company exists
-  await ensureCompanyExists(companyId);
+  // Ensure company directory exists (should exist from when app was first viewed)
+  const existingCompany = await pool.query(`
+    SELECT company_id, company_name, installed_at FROM whop_companies WHERE company_id = $1
+  `, [companyId]);
+  
+  if (existingCompany.rows.length === 0) {
+    console.error(`❌ WARNING: Member trying to join non-existent directory ${companyId}`);
+    console.log(`🚨 CREATING MISSING DIRECTORY: ${companyId} (app should have been viewed first)`);
+    
+    try {
+      await pool.query(`
+        INSERT INTO whop_companies (company_id, company_name, installed_at, last_activity, status) 
+        VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'active')
+      `, [companyId, `Company ${companyId}`]);
+      
+      console.log(`✅ FALLBACK DIRECTORY CREATED: ${companyId}`);
+    } catch (error) {
+      console.error('❌ Error creating fallback directory:', error);
+      return; // Can't add member without directory
+    }
+  } else {
+    console.log(`✅ Adding member to existing directory: ${existingCompany.rows[0].company_name}`);
+  }
   
   // Parse join date - handle Whop timestamp format
   let joinedAt = new Date();
@@ -686,24 +678,53 @@ async function handleMembershipValid(companyId, data) {
     }
   }
 
-  // Extract custom fields from multiple possible locations
+  // Enhanced custom fields extraction from multiple possible locations
   const customFields = data.custom_field_responses || 
                       data.waitlist_responses || 
                       data.custom_fields || 
-                      data.responses || 
+                      data.responses ||
+                      data.metadata ||
                       {};
 
-  // Get additional user info if available
-  const userEmail = data.email || data.user_email || null;
-  const userName = data.name || data.display_name || data.user_name || null;
-  const username = data.username || data.user_username || null;
+  // Enhanced user info extraction - try multiple field names and nested objects
+  const userEmail = data.email || 
+                   data.user_email || 
+                   data.user?.email ||
+                   (data.custom_field_responses && Object.values(data.custom_field_responses).find(v => String(v).includes('@'))) ||
+                   null;
+                   
+  const userName = data.name || 
+                  data.display_name || 
+                  data.user_name ||
+                  data.user?.name ||
+                  data.user?.display_name ||
+                  data.full_name ||
+                  data.first_name ||
+                  (data.first_name && data.last_name ? `${data.first_name} ${data.last_name}` : null) ||
+                  null;
+                  
+  const username = data.username || 
+                  data.user_username || 
+                  data.user?.username ||
+                  data.handle ||
+                  null;
+
+  console.log(`📝 Extracted member info:`, {
+    userId,
+    membershipId,
+    userEmail,
+    userName,
+    username,
+    customFieldsCount: Object.keys(customFields).length,
+    joinedAt: joinedAt.toISOString()
+  });
 
   try {
     const result = await pool.query(`
       INSERT INTO whop_members (
         user_id, membership_id, company_id, email, name, username, 
-        custom_fields, joined_at, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
+        custom_fields, joined_at, status, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active', CURRENT_TIMESTAMP)
       ON CONFLICT (user_id, company_id) 
       DO UPDATE SET 
         membership_id = EXCLUDED.membership_id,
@@ -726,9 +747,22 @@ async function handleMembershipValid(companyId, data) {
     ]);
     
     const member = result.rows[0];
-    console.log(`✅ Member ${userId} (${member.name || 'Anonymous'}) added to ${companyId}`);
+    console.log(`✅ MEMBER ADDED: ${userId} (${member.name || 'Anonymous'}) to directory ${companyId}`);
     console.log(`📊 Member ID: ${member.id}, Email: ${member.email || 'none'}`);
     console.log(`📅 Join date: ${joinedAt.toISOString()}`);
+    
+    // If still no name, log what we tried to extract
+    if (!member.name) {
+      console.log(`⚠️ No name found for member ${userId}. Tried extracting from:`, {
+        'data.name': data.name,
+        'data.display_name': data.display_name,
+        'data.user_name': data.user_name,
+        'data.user?.name': data.user?.name,
+        'data.first_name': data.first_name,
+        'data.last_name': data.last_name,
+        'all_data_keys': Object.keys(data)
+      });
+    }
     
     // Update company activity
     await pool.query(`
@@ -854,6 +888,8 @@ app.use('/api/*', (req, res) => {
       'GET /api/health',
       'GET /api/test',
       'GET /api/members/auto',
+      'GET /api/companies',
+      'GET /api/directory/check/:companyId',
       'POST /webhook/whop',
       'POST /webhook/test (for testing member addition)'
     ]
@@ -869,20 +905,32 @@ app.get('*', (req, res) => {
 
 app.listen(port, () => {
   console.log('');
-  console.log('🎉 ===== ENHANCED AUTO-DETECTING WHOP DIRECTORY =====');
+  console.log('🎉 ===== WHOP MEMBER DIRECTORY SYSTEM =====');
   console.log(`🚀 Server running on port ${port}`);
   console.log(`📱 App URL: ${process.env.NODE_ENV === 'production' ? 'https://whopboardy-production.up.railway.app' : `http://localhost:${port}`}/`);
   console.log(`🔗 Webhook URL: ${process.env.NODE_ENV === 'production' ? 'https://whopboardy-production.up.railway.app' : `http://localhost:${port}`}/webhook/whop`);
   console.log('');
-  console.log('🔧 Enhanced Features:');
-  console.log('   ✅ Smart Whop URL parsing');
-  console.log('   ✅ Database company lookup');
-  console.log('   ✅ Hardcoded username mapping (jaredstivala)');
-  console.log('   ✅ Intelligent fallback detection');
-  console.log('   ✅ Enhanced debugging');
-  console.log('   ✅ Support for 100+ members');
+  console.log('📋 How It Works:');
+  console.log('   1️⃣  FIRST APP VIEW → Creates new directory for community');
+  console.log('   2️⃣  MEMBERS JOIN → Webhooks add them to directory');
+  console.log('   3️⃣  SUBSEQUENT VIEWS → Shows existing directory');
+  console.log('');
+  console.log('🔧 Features:');
+  console.log('   ✅ Auto-creates directories on first app view');
+  console.log('   ✅ Separate directories per Whop community');
   console.log('   ✅ Real-time member updates via webhooks');
-  console.log('   ✅ Multiple webhook event types');
+  console.log('   ✅ Enhanced member name extraction');
+  console.log('   ✅ Smart company auto-detection');
+  console.log('   ✅ Support for 100+ members per directory');
+  console.log('   ✅ Custom field support');
+  console.log('');
+  console.log('🎯 Webhook Events (Available in Whop):');
+  console.log('   👤 membership_went_valid → Add member to directory');
+  console.log('   ❌ membership_went_invalid → Remove member');
+  console.log('   ✏️  membership_updated → Update member info');
+  console.log('');
+  console.log('💡 Note: Directories auto-created when app is first viewed');
+  console.log('   (Works with actual Whop webhook events)');
   console.log('');
 });
 
