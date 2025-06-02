@@ -1,4 +1,4 @@
-// ==================== FIXED AUTO-DETECTION SERVER.JS ====================
+// ==================== WHOP APP STORE READY SERVER.JS ====================
 
 const express = require('express');
 const { Pool } = require('pg');
@@ -7,7 +7,7 @@ const path = require('path');
 const app = express();
 const port = process.env.PORT || 3000;
 
-console.log('🚀 Starting Auto-Detecting Whop Member Directory Server...');
+console.log('🚀 Starting Whop App Store Ready Member Directory...');
 
 // Environment Variables Check
 console.log('🔍 Environment Variables Check:');
@@ -23,7 +23,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-company-id, x-whop-company-id, x-business-id');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-company-id, x-whop-company-id, x-business-id, x-page-id');
   
   // Allow embedding in Whop iframes
   res.header('X-Frame-Options', 'ALLOWALL');
@@ -36,13 +36,22 @@ app.use((req, res, next) => {
   }
 });
 
-// Enhanced request logging
+// Enhanced request logging with installation detection
 app.use((req, res, next) => {
   const companyId = extractCompanyId(req);
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path} [Company: ${companyId || 'auto-detect'}]`);
+  const isAppView = req.path === '/' || req.path === '/index.html';
+  
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path} [Company: ${companyId || 'auto-detect'}] ${isAppView ? '[APP_VIEW]' : ''}`);
+  
   if (req.headers.referer) {
     console.log(`   Referer: ${req.headers.referer}`);
   }
+  
+  // Log Whop-specific headers for debugging
+  if (req.headers['x-page-id'] || req.headers['x-whop-company-id']) {
+    console.log(`   Whop Headers: page-id=${req.headers['x-page-id']}, company-id=${req.headers['x-whop-company-id']}`);
+  }
+  
   next();
 });
 
@@ -61,20 +70,24 @@ pool.connect()
     console.log('✅ Database connected successfully');
     
     try {
-      // Create companies table for installations
+      // Create companies table with enhanced fields for app store
       await client.query(`
         CREATE TABLE IF NOT EXISTS whop_companies (
           id SERIAL PRIMARY KEY,
           company_id VARCHAR(255) UNIQUE NOT NULL,
           company_name VARCHAR(255),
-          installed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           last_activity TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          first_viewed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           webhook_secret VARCHAR(500),
           settings JSONB DEFAULT '{}',
-          status VARCHAR(50) DEFAULT 'active'
+          status VARCHAR(50) DEFAULT 'active',
+          installation_source VARCHAR(100) DEFAULT 'app_store',
+          app_version VARCHAR(50) DEFAULT '3.2.0'
         );
         
         CREATE INDEX IF NOT EXISTS idx_whop_companies_company_id ON whop_companies(company_id);
+        CREATE INDEX IF NOT EXISTS idx_whop_companies_status ON whop_companies(status);
       `);
       
       // Create or update members table
@@ -92,15 +105,33 @@ pool.connect()
           joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           status VARCHAR(50) DEFAULT 'active',
-          UNIQUE(user_id, company_id)
+          UNIQUE(user_id, company_id),
+          FOREIGN KEY (company_id) REFERENCES whop_companies(company_id) ON DELETE CASCADE
         );
         
         CREATE INDEX IF NOT EXISTS idx_whop_members_company_id ON whop_members(company_id);
         CREATE INDEX IF NOT EXISTS idx_whop_members_user_id ON whop_members(user_id);
         CREATE INDEX IF NOT EXISTS idx_whop_members_joined_at ON whop_members(joined_at);
+        CREATE INDEX IF NOT EXISTS idx_whop_members_status ON whop_members(status);
       `);
       
-      // Create trigger for updating timestamps
+      // Create installation tracking table
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS app_installations (
+          id SERIAL PRIMARY KEY,
+          company_id VARCHAR(255) UNIQUE NOT NULL,
+          installed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          installation_method VARCHAR(100) DEFAULT 'first_view',
+          user_agent TEXT,
+          referer_url TEXT,
+          installation_data JSONB DEFAULT '{}',
+          FOREIGN KEY (company_id) REFERENCES whop_companies(company_id) ON DELETE CASCADE
+        );
+        
+        CREATE INDEX IF NOT EXISTS idx_app_installations_company_id ON app_installations(company_id);
+      `);
+      
+      // Create triggers for updating timestamps
       await client.query(`
         CREATE OR REPLACE FUNCTION update_updated_at_column()
         RETURNS TRIGGER AS $$
@@ -116,11 +147,19 @@ pool.connect()
           FOR EACH ROW
           EXECUTE FUNCTION update_updated_at_column();
           
+        CREATE OR REPLACE FUNCTION update_last_activity_column()
+        RETURNS TRIGGER AS $$
+        BEGIN
+          NEW.last_activity = CURRENT_TIMESTAMP;
+          RETURN NEW;
+        END;
+        $$ language 'plpgsql';
+          
         DROP TRIGGER IF EXISTS update_whop_companies_last_activity ON whop_companies;
         CREATE TRIGGER update_whop_companies_last_activity
           BEFORE UPDATE ON whop_companies
           FOR EACH ROW
-          EXECUTE FUNCTION update_updated_at_column();
+          EXECUTE FUNCTION update_last_activity_column();
       `);
       
       console.log('✅ Database tables created successfully');
@@ -128,34 +167,12 @@ pool.connect()
       // Show current stats
       const stats = await client.query(`
         SELECT 
-          (SELECT COUNT(*) FROM whop_companies) as total_companies,
-          (SELECT COUNT(*) FROM whop_members) as total_members
+          (SELECT COUNT(*) FROM whop_companies WHERE status = 'active') as active_directories,
+          (SELECT COUNT(*) FROM whop_members WHERE status = 'active') as total_active_members,
+          (SELECT COUNT(*) FROM app_installations WHERE installed_at > NOW() - INTERVAL '24 hours') as installs_today
       `);
       
-      console.log(`📊 Current stats: ${stats.rows[0].total_companies} companies, ${stats.rows[0].total_members} members`);
-      
-      // Show recent activity
-      try {
-        const recentActivity = await client.query(`
-          SELECT 
-            c.company_id,
-            c.company_name,
-            COUNT(m.id) as member_count,
-            MAX(m.joined_at) as latest_join
-          FROM whop_companies c
-          LEFT JOIN whop_members m ON c.company_id = m.company_id AND m.status = 'active'
-          GROUP BY c.company_id, c.company_name
-          ORDER BY member_count DESC
-          LIMIT 5
-        `);
-        
-        console.log('🏢 Top Companies by Member Count:');
-        recentActivity.rows.forEach(company => {
-          console.log(`   ${company.company_name || company.company_id}: ${company.member_count} members`);
-        });
-      } catch (activityError) {
-        console.log('📊 Could not fetch company activity stats');
-      }
+      console.log(`📊 Current stats: ${stats.rows[0].active_directories} active directories, ${stats.rows[0].total_active_members} members, ${stats.rows[0].installs_today} installs today`);
       
     } catch (createError) {
       console.error('❌ Error setting up database:', createError);
@@ -173,27 +190,28 @@ pool.connect()
 function extractCompanyId(req) {
   console.log('🔍 Starting company ID detection...');
   
-  // Enhanced company ID extraction for Whop apps
+  // Enhanced company ID extraction for Whop apps with app store support
   const sources = [
     // Whop-specific headers (highest priority)
+    req.headers['x-page-id'],           // Primary Whop identifier
     req.headers['x-whop-company-id'],
     req.headers['x-company-id'], 
     req.headers['x-business-id'],
-    req.headers['x-page-id'],
     
     // URL parameters
     req.query.company,
     req.query.company_id,
     req.query.business_id,
     req.query.page_id,
+    req.query.biz,
     
-    // Body data (for webhooks) - check nested data too
+    // Body data (for webhooks)
+    req.body?.page_id,
     req.body?.company_id,
     req.body?.business_id,
-    req.body?.page_id,
+    req.body?.data?.page_id,
     req.body?.data?.company_id,
     req.body?.data?.business_id,
-    req.body?.data?.page_id,
     req.body?.data?.product?.company_id,
     
     // Extract from referer URL (when embedded in Whop)
@@ -202,14 +220,12 @@ function extractCompanyId(req) {
   
   console.log('🔍 Checking sources:', {
     headers: {
+      'x-page-id': req.headers['x-page-id'],
       'x-whop-company-id': req.headers['x-whop-company-id'],
       'x-company-id': req.headers['x-company-id'],
-      'x-page-id': req.headers['x-page-id'],
       'referer': req.headers.referer
     },
     query: req.query,
-    body_keys: req.body ? Object.keys(req.body) : [],
-    page_id: req.body?.page_id,
     extracted_from_referer: extractCompanyFromReferer(req.headers.referer)
   });
   
@@ -221,7 +237,7 @@ function extractCompanyId(req) {
     }
   }
   
-  console.log('⚠️ No direct company ID found');
+  console.log('⚠️ No company ID found in request');
   return null;
 }
 
@@ -230,32 +246,37 @@ function extractCompanyFromReferer(referer) {
   
   console.log(`🔍 Parsing referer: ${referer}`);
   
-  // Enhanced Whop URL patterns
+  // Enhanced Whop URL patterns for app store apps
   const patterns = [
-    // Direct company patterns
+    // Whop app store and embedded app patterns
+    /\/apps\/([^\/\?]+)/,               // whop.com/apps/app-id
+    /\/([^\/]+)\/apps\/([^\/\?]+)/,     // whop.com/company/apps/app-id
+    /whop\.com\/([^\/]+)\/[^\/]*app/,   // whop.com/company/member-directory-app
+    
+    // Business/company ID patterns  
+    /\/(biz_[^\/\?]+)/,                 // Direct biz_ IDs
     /\/company\/([^\/\?]+)/,
     /\/business\/([^\/\?]+)/,
     /company_id=([^&\?]+)/,
     /business_id=([^&\?]+)/,
+    /page_id=([^&\?]+)/,
     
     // Whop subdomain patterns
     /^https?:\/\/([^\.]+)\.whop\.com/,
     
-    // Whop path patterns - extract username from whop.com URLs
-    /whop\.com\/([^\/]+)\/[^\/]+/,  // whop.com/username/product
-    /whop\.com\/([^\/\?]+)/,        // whop.com/username
+    // Whop main domain patterns
+    /whop\.com\/([^\/]+)\/[^\/]+/,      // whop.com/username/product
+    /whop\.com\/([^\/\?]+)/,            // whop.com/username
     
-    // Extract biz_ IDs specifically
-    /\/(biz_[^\/\?]+)/,
-    
-    // Product/app specific patterns
-    /\/([^\/]+)\/whop-bot-[^\/]+/,
-    /\/([^\/]+)\/[^\/]+-[^\/]+\/app/
+    // Product/dashboard specific patterns
+    /\/([^\/]+)\/dashboard/,
+    /\/([^\/]+)\/members/,
+    /\/([^\/]+)\/apps/
   ];
   
   for (const pattern of patterns) {
     const match = referer.match(pattern);
-    if (match && match[1] && match[1] !== 'www' && match[1] !== 'app') {
+    if (match && match[1] && match[1] !== 'www' && match[1] !== 'app' && match[1] !== 'apps') {
       console.log(`🎯 Extracted from referer: ${match[1]} (pattern: ${pattern})`);
       return match[1];
     }
@@ -264,46 +285,114 @@ function extractCompanyFromReferer(referer) {
   return null;
 }
 
-// Enhanced company lookup function
-async function findCompanyInDatabase(identifier) {
-  if (!identifier) return null;
+// ==================== APP STORE INSTALLATION DETECTION ====================
+
+async function detectAndHandleNewInstallation(req) {
+  const companyId = extractCompanyId(req);
   
-  console.log(`🔍 Looking up company for identifier: ${identifier}`);
-  
-  try {
-    // Try exact match first
-    let result = await pool.query(`
-      SELECT company_id, company_name, username 
-      FROM whop_companies 
-      WHERE company_id = $1 OR username = $1
-      LIMIT 1
-    `, [identifier]);
-    
-    if (result.rows.length > 0) {
-      console.log(`✅ Found exact match: ${result.rows[0].company_id}`);
-      return result.rows[0];
-    }
-    
-    // Try partial matching for usernames
-    result = await pool.query(`
-      SELECT company_id, company_name, username 
-      FROM whop_companies 
-      WHERE username ILIKE $1 OR company_name ILIKE $1
-      LIMIT 1
-    `, [`%${identifier}%`]);
-    
-    if (result.rows.length > 0) {
-      console.log(`✅ Found partial match: ${result.rows[0].company_id}`);
-      return result.rows[0];
-    }
-    
-    console.log(`❌ No company found for identifier: ${identifier}`);
-    return null;
-    
-  } catch (error) {
-    console.error('❌ Error looking up company:', error);
+  if (!companyId) {
+    console.log('⚠️ Cannot detect installation - no company ID found');
     return null;
   }
+  
+  console.log(`🔍 Checking if ${companyId} is a new installation...`);
+  
+  try {
+    // Check if company directory already exists
+    const existingCompany = await pool.query(`
+      SELECT company_id, created_at, installation_source 
+      FROM whop_companies 
+      WHERE company_id = $1
+    `, [companyId]);
+    
+    if (existingCompany.rows.length > 0) {
+      console.log(`✅ Existing directory found for ${companyId} (created: ${existingCompany.rows[0].created_at})`);
+      
+      // Update last activity
+      await pool.query(`
+        UPDATE whop_companies 
+        SET last_activity = CURRENT_TIMESTAMP 
+        WHERE company_id = $1
+      `, [companyId]);
+      
+      return {
+        isNewInstallation: false,
+        companyId,
+        company: existingCompany.rows[0]
+      };
+    }
+    
+    // This is a new installation! Create the directory
+    console.log(`🎉 NEW INSTALLATION DETECTED: ${companyId}`);
+    
+    // Create company directory
+    const newCompany = await pool.query(`
+      INSERT INTO whop_companies (
+        company_id, 
+        company_name, 
+        created_at, 
+        first_viewed_at, 
+        last_activity, 
+        installation_source,
+        app_version,
+        status
+      ) VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'app_store', '3.2.0', 'active')
+      RETURNING *
+    `, [companyId, generateCompanyName(companyId)]);
+    
+    // Track the installation
+    await pool.query(`
+      INSERT INTO app_installations (
+        company_id, 
+        installed_at, 
+        installation_method, 
+        user_agent, 
+        referer_url,
+        installation_data
+      ) VALUES ($1, CURRENT_TIMESTAMP, 'first_view', $2, $3, $4)
+    `, [
+      companyId,
+      req.headers['user-agent'] || '',
+      req.headers.referer || '',
+      JSON.stringify({
+        ip: req.ip || req.connection.remoteAddress,
+        headers: {
+          'x-page-id': req.headers['x-page-id'],
+          'x-whop-company-id': req.headers['x-whop-company-id']
+        },
+        timestamp: new Date().toISOString()
+      })
+    ]);
+    
+    console.log(`🎯 DIRECTORY CREATED: ${companyId} - Ready for members!`);
+    console.log(`📊 Company Name: ${newCompany.rows[0].company_name}`);
+    
+    return {
+      isNewInstallation: true,
+      companyId,
+      company: newCompany.rows[0]
+    };
+    
+  } catch (error) {
+    console.error('❌ Error detecting/handling installation:', error);
+    return null;
+  }
+}
+
+function generateCompanyName(companyId) {
+  // Generate a friendly company name from the ID
+  if (companyId.startsWith('biz_')) {
+    return `${companyId.replace('biz_', '').replace(/[^a-zA-Z0-9]/g, ' ')} Community`;
+  }
+  
+  // Clean up the ID to make it more readable
+  const cleanName = companyId
+    .replace(/[_-]/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/\b\w/g, l => l.toUpperCase())
+    .trim();
+    
+  return `${cleanName} Directory`;
 }
 
 // ==================== API ROUTES ====================
@@ -312,116 +401,102 @@ async function findCompanyInDatabase(identifier) {
 app.get('/api/health', (req, res) => {
   res.json({ 
     success: true, 
-    message: 'Auto-detecting Whop Directory is healthy!', 
+    message: 'Whop App Store Ready Directory is healthy!', 
     timestamp: new Date().toISOString(),
-    version: '3.1.0',
-    features: ['enhanced-auto-detection', 'whop-context-parsing']
+    version: '3.2.0',
+    features: [
+      'auto-installation-detection',
+      'app-store-ready',
+      'multi-tenant-directories',
+      'enhanced-company-detection',
+      'webhook-member-sync'
+    ]
   });
 });
 
-// Test endpoint with enhanced debugging
+// Enhanced test endpoint
 app.get('/api/test', async (req, res) => {
   const extractedId = extractCompanyId(req);
-  const companyLookup = extractedId ? await findCompanyInDatabase(extractedId) : null;
   
-  // Get current member count
-  let memberCount = 0;
+  // Test installation detection
+  const installationResult = extractedId ? await detectAndHandleNewInstallation(req) : null;
+  
+  // Get current stats
+  let stats = {};
   try {
-    if (companyLookup) {
-      const countResult = await pool.query(`
-        SELECT COUNT(*) as count FROM whop_members 
-        WHERE company_id = $1 AND status = 'active'
-      `, [companyLookup.company_id]);
-      memberCount = parseInt(countResult.rows[0].count);
-    }
+    const statsResult = await pool.query(`
+      SELECT 
+        COUNT(*) as total_directories,
+        COUNT(CASE WHEN status = 'active' THEN 1 END) as active_directories,
+        (SELECT COUNT(*) FROM whop_members WHERE status = 'active') as total_members,
+        (SELECT COUNT(*) FROM app_installations WHERE installed_at > NOW() - INTERVAL '24 hours') as installs_today
+      FROM whop_companies
+    `);
+    stats = statsResult.rows[0];
   } catch (error) {
-    console.error('Error getting member count:', error);
+    console.error('Error getting stats:', error);
   }
   
   res.json({ 
     success: true, 
     extracted_company_id: extractedId || 'none',
-    company_lookup: companyLookup,
-    current_member_count: memberCount,
+    installation_detection: installationResult,
+    system_stats: stats,
     detection_debug: {
       headers: {
+        'x-page-id': req.headers['x-page-id'] || 'missing',
         'x-whop-company-id': req.headers['x-whop-company-id'] || 'missing',
         'x-company-id': req.headers['x-company-id'] || 'missing',
-        'x-page-id': req.headers['x-page-id'] || 'missing',
         'referer': req.headers.referer || 'missing'
       },
       query_params: req.query,
       extracted_from_referer: extractCompanyFromReferer(req.headers.referer)
     },
-    webhook_info: {
-      endpoint: '/webhook/whop',
-      supported_formats: ['action + data', 'event_type + data'],
+    app_store_info: {
+      version: '3.2.0',
+      auto_installation: 'enabled',
+      webhook_endpoint: '/webhook/whop',
       supported_events: [
-        'membership.went_valid',
-        'membership_went_valid', 
-        'membership.created',
-        'user_joined'
+        'membership_went_valid',
+        'membership_went_invalid',
+        'membership_updated'
       ]
     },
     timestamp: new Date().toISOString()
   });
 });
 
-// Enhanced members endpoint with intelligent company detection
+// Enhanced members endpoint with automatic installation detection
 app.get('/api/members/:companyId?', async (req, res) => {
   let { companyId } = req.params;
-  let actualCompanyId = null;
   
-  console.log(`🔍 Members API called with companyId: ${companyId}`);
+  console.log(`📡 Members API called with companyId: ${companyId}`);
   
-  // Extract company ID from request
+  // Handle installation detection on members API call
+  let installationResult = null;
+  
   if (!companyId || companyId === 'auto') {
-    const extractedId = extractCompanyId(req);
-    console.log(`🔍 Extracted ID from request: ${extractedId}`);
+    // Try to detect installation
+    installationResult = await detectAndHandleNewInstallation(req);
     
-    if (extractedId) {
-      // Look up the actual company ID in database
-      const company = await findCompanyInDatabase(extractedId);
-      if (company) {
-        actualCompanyId = company.company_id;
-        console.log(`✅ Found company in database: ${actualCompanyId}`);
-      } else {
-        console.log(`❌ Company not found in database for: ${extractedId}`);
-      }
+    if (installationResult) {
+      companyId = installationResult.companyId;
     }
-    
-    // If still no company found, try auto-detection from database
-    if (!actualCompanyId) {
-      try {
-        const result = await pool.query(`
-          SELECT company_id, company_name
-          FROM whop_companies 
-          WHERE status = 'active'
-          ORDER BY last_activity DESC
-          LIMIT 1
-        `);
-        
-        if (result.rows.length > 0) {
-          actualCompanyId = result.rows[0].company_id;
-          console.log(`🔍 Auto-detected most recent company: ${actualCompanyId}`);
-        }
-      } catch (error) {
-        console.error('❌ Auto-detection failed:', error);
-      }
-    }
-  } else {
-    actualCompanyId = companyId;
   }
   
-  if (!actualCompanyId) {
+  if (!companyId) {
+    // Try to get available companies for selection
+    const availableCompanies = await getAvailableCompanies();
+    
     return res.status(400).json({
       success: false,
       error: 'Unable to detect company ID',
-      help: 'Make sure this app is properly embedded in your Whop community',
+      help: 'This app should be accessed from within your Whop dashboard',
+      available_companies: availableCompanies,
       debug: {
         extracted_id: extractCompanyId(req),
         referer: req.headers.referer,
-        available_companies: await getAvailableCompanies()
+        installation_result: installationResult
       }
     });
   }
@@ -432,35 +507,45 @@ app.get('/api/members/:companyId?', async (req, res) => {
       SELECT 
         m.id, m.user_id, m.membership_id, m.email, m.name, m.username, 
         m.custom_fields, m.joined_at, m.status, m.updated_at,
-        c.company_name
+        c.company_name, c.created_at as directory_created
       FROM whop_members m
-      LEFT JOIN whop_companies c ON m.company_id = c.company_id
-      WHERE m.company_id = $1
+      RIGHT JOIN whop_companies c ON m.company_id = c.company_id
+      WHERE c.company_id = $1 AND c.status = 'active'
       ORDER BY m.joined_at DESC
-    `, [actualCompanyId]);
+    `, [companyId]);
+    
+    const members = result.rows
+      .filter(row => row.user_id) // Only include actual members
+      .map(member => ({
+        id: member.id,
+        user_id: member.user_id,
+        membership_id: member.membership_id,
+        email: member.email,
+        name: member.name,
+        username: member.username,
+        waitlist_responses: member.custom_fields || {},
+        custom_fields: member.custom_fields || {},
+        joined_at: member.joined_at,
+        status: member.status || 'active',
+        updated_at: member.updated_at
+      }));
 
-    const members = result.rows.map(member => ({
-      id: member.id,
-      user_id: member.user_id,
-      membership_id: member.membership_id,
-      email: member.email,
-      name: member.name,
-      username: member.username,
-      waitlist_responses: member.custom_fields || {},
-      custom_fields: member.custom_fields || {},
-      joined_at: member.joined_at,
-      status: member.status,
-      updated_at: member.updated_at
-    }));
+    const companyInfo = result.rows[0] || {};
+    const isNewDirectory = installationResult?.isNewInstallation || false;
 
-    console.log(`✅ Returning ${members.length} members for company ${actualCompanyId}`);
+    console.log(`✅ Returning ${members.length} members for ${companyId} (${isNewDirectory ? 'NEW' : 'EXISTING'} directory)`);
 
     res.json({
       success: true,
       members: members,
       count: members.length,
-      company_id: actualCompanyId,
-      company_name: result.rows[0]?.company_name || actualCompanyId,
+      company_id: companyId,
+      company_name: companyInfo.company_name || companyId,
+      is_new_installation: isNewDirectory,
+      directory_created: companyInfo.directory_created,
+      message: isNewDirectory ? 
+        'Welcome! Your member directory has been created. Members will appear here as they join your community.' :
+        `Loaded ${members.length} members from your directory.`,
       timestamp: new Date().toISOString()
     });
 
@@ -469,32 +554,71 @@ app.get('/api/members/:companyId?', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message,
-      company_id: actualCompanyId
+      company_id: companyId
     });
   }
 });
 
-// Helper function to get available companies
+// Get available companies (for debugging/selection)
 async function getAvailableCompanies() {
   try {
     const result = await pool.query(`
       SELECT 
-        company_id,
-        company_name,
+        c.company_id,
+        c.company_name,
+        c.created_at,
         COUNT(m.id) as member_count,
         MAX(c.last_activity) as latest_activity
       FROM whop_companies c
-      LEFT JOIN whop_members m ON c.company_id = m.company_id
+      LEFT JOIN whop_members m ON c.company_id = m.company_id AND m.status = 'active'
       WHERE c.status = 'active'
-      GROUP BY c.company_id, c.company_name
-      ORDER BY member_count DESC, latest_activity DESC
-      LIMIT 100
+      GROUP BY c.company_id, c.company_name, c.created_at
+      ORDER BY c.created_at DESC
+      LIMIT 20
     `);
     return result.rows;
   } catch (error) {
+    console.error('Error getting available companies:', error);
     return [];
   }
 }
+
+// Installation stats endpoint
+app.get('/api/installations', async (req, res) => {
+  try {
+    const stats = await pool.query(`
+      SELECT 
+        COUNT(*) as total_installations,
+        COUNT(CASE WHEN installed_at > NOW() - INTERVAL '24 hours' THEN 1 END) as today,
+        COUNT(CASE WHEN installed_at > NOW() - INTERVAL '7 days' THEN 1 END) as this_week,
+        COUNT(CASE WHEN installed_at > NOW() - INTERVAL '30 days' THEN 1 END) as this_month
+      FROM app_installations
+    `);
+    
+    const recent = await pool.query(`
+      SELECT 
+        ai.company_id,
+        ai.installed_at,
+        wc.company_name,
+        (SELECT COUNT(*) FROM whop_members WHERE company_id = ai.company_id AND status = 'active') as member_count
+      FROM app_installations ai
+      LEFT JOIN whop_companies wc ON ai.company_id = wc.company_id
+      ORDER BY ai.installed_at DESC
+      LIMIT 10
+    `);
+    
+    res.json({
+      success: true,
+      stats: stats.rows[0],
+      recent_installations: recent.rows,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('Error getting installation stats:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 // ==================== WEBHOOK HANDLERS ====================
 
@@ -511,7 +635,6 @@ app.post('/webhook/whop', async (req, res) => {
     
     if (!eventType) {
       console.error('❌ Invalid webhook payload - missing event_type or action');
-      console.error('📦 Available keys:', Object.keys(req.body));
       return res.status(400).json({ 
         error: 'Invalid webhook payload - missing event_type or action',
         received_keys: Object.keys(req.body)
@@ -523,7 +646,7 @@ app.post('/webhook/whop', async (req, res) => {
       return res.status(400).json({ error: 'Invalid webhook payload - missing data' });
     }
 
-    // Extract company ID from webhook - check multiple locations
+    // Extract company ID from webhook
     let companyId = extractCompanyId(req);
     
     // If not found in headers/query, try to extract from webhook data
@@ -539,30 +662,18 @@ app.post('/webhook/whop', async (req, res) => {
     
     if (!companyId) {
       console.error('❌ No company ID found in webhook');
-      console.error('📦 Available data keys:', Object.keys(data));
-      console.error('📦 Headers:', Object.keys(req.headers));
-      console.error('📦 Data content:', JSON.stringify(data, null, 2));
       return res.status(400).json({ 
         error: 'No company ID found in webhook payload',
-        received_data: Object.keys(data),
-        received_headers: Object.keys(req.headers),
         help: 'Company ID should be in page_id, company_id, or headers'
       });
     }
 
     console.log(`📨 Processing ${eventType} for company ${companyId}`);
     
-    // Log member count before processing
-    try {
-      const beforeCount = await pool.query(`
-        SELECT COUNT(*) as count FROM whop_members WHERE company_id = $1 AND status = 'active'
-      `, [companyId]);
-      console.log(`📊 Current member count for ${companyId}: ${beforeCount.rows[0].count}`);
-    } catch (error) {
-      console.error('⚠️ Could not get member count:', error);
-    }
+    // Ensure company directory exists (create if needed)
+    await ensureCompanyExists(companyId);
 
-    // Handle different webhook events (only membership events are available)
+    // Handle different webhook events
     switch (eventType) {
       case 'membership_went_valid':
       case 'membership.went_valid':
@@ -570,8 +681,6 @@ app.post('/webhook/whop', async (req, res) => {
       case 'membership.created':
       case 'user_joined':
       case 'user.joined':
-      case 'member_added':
-      case 'member.added':
         await handleMembershipValid(companyId, data);
         break;
         
@@ -581,8 +690,6 @@ app.post('/webhook/whop', async (req, res) => {
       case 'membership.cancelled':
       case 'user_left':
       case 'user.left':
-      case 'member_removed':
-      case 'member.removed':
         await handleMembershipInvalid(companyId, data);
         break;
         
@@ -595,23 +702,11 @@ app.post('/webhook/whop', async (req, res) => {
         
       default:
         console.log(`ℹ️ Unhandled event type: ${eventType}`);
-        console.log(`📦 Event data:`, JSON.stringify(data, null, 2));
         // Still process as potential membership event
         if (data.status === 'completed' && data.valid === true) {
           console.log('🔄 Treating as membership validation event');
           await handleMembershipValid(companyId, data);
         }
-    }
-
-    
-    // Log member count after processing
-    try {
-      const afterCount = await pool.query(`
-        SELECT COUNT(*) as count FROM whop_members WHERE company_id = $1 AND status = 'active'
-      `, [companyId]);
-      console.log(`📊 Member count after processing: ${afterCount.rows[0].count}`);
-    } catch (error) {
-      console.error('⚠️ Could not get updated member count:', error);
     }
 
     res.json({ 
@@ -628,57 +723,32 @@ app.post('/webhook/whop', async (req, res) => {
   }
 });
 
-// Handle valid membership - adds members to existing directories
+// Handle valid membership - adds members to directories
 async function handleMembershipValid(companyId, data) {
   const userId = data.user_id || data.user;
   const membershipId = data.id || data.membership_id;
   
   if (!userId) {
     console.error('❌ No user_id in membership webhook');
-    console.error('📦 Available data keys:', Object.keys(data));
     return;
   }
 
   console.log(`👤 MEMBER JOIN: Processing ${userId} for company ${companyId}`);
-  console.log('📦 Full webhook data for member extraction:', JSON.stringify(data, null, 2));
   
-  // Ensure company directory exists (should exist from when app was first viewed)
-  const existingCompany = await pool.query(`
-    SELECT company_id, company_name, installed_at FROM whop_companies WHERE company_id = $1
-  `, [companyId]);
+  // Ensure company directory exists
+  await ensureCompanyExists(companyId);
   
-  if (existingCompany.rows.length === 0) {
-    console.error(`❌ WARNING: Member trying to join non-existent directory ${companyId}`);
-    console.log(`🚨 CREATING MISSING DIRECTORY: ${companyId} (app should have been viewed first)`);
-    
-    try {
-      await pool.query(`
-        INSERT INTO whop_companies (company_id, company_name, installed_at, last_activity, status) 
-        VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'active')
-      `, [companyId, `Company ${companyId}`]);
-      
-      console.log(`✅ FALLBACK DIRECTORY CREATED: ${companyId}`);
-    } catch (error) {
-      console.error('❌ Error creating fallback directory:', error);
-      return; // Can't add member without directory
-    }
-  } else {
-    console.log(`✅ Adding member to existing directory: ${existingCompany.rows[0].company_name}`);
-  }
-  
-  // Parse join date - handle Whop timestamp format
+  // Parse member data
   let joinedAt = new Date();
   if (data.created_at) {
-    // Whop sends timestamps in seconds, convert to milliseconds
     const timestamp = parseInt(data.created_at);
-    if (timestamp > 946684800) { // If > year 2000 in seconds
+    if (timestamp > 946684800) { // Convert from seconds to milliseconds
       joinedAt = new Date(timestamp * 1000);
     } else {
       joinedAt = new Date(data.created_at);
     }
   }
 
-  // Enhanced custom fields extraction from multiple possible locations
   const customFields = data.custom_field_responses || 
                       data.waitlist_responses || 
                       data.custom_fields || 
@@ -686,11 +756,9 @@ async function handleMembershipValid(companyId, data) {
                       data.metadata ||
                       {};
 
-  // Enhanced user info extraction - try multiple field names and nested objects
   const userEmail = data.email || 
                    data.user_email || 
                    data.user?.email ||
-                   (data.custom_field_responses && Object.values(data.custom_field_responses).find(v => String(v).includes('@'))) ||
                    null;
                    
   const userName = data.name || 
@@ -698,26 +766,13 @@ async function handleMembershipValid(companyId, data) {
                   data.user_name ||
                   data.user?.name ||
                   data.user?.display_name ||
-                  data.full_name ||
-                  data.first_name ||
                   (data.first_name && data.last_name ? `${data.first_name} ${data.last_name}` : null) ||
                   null;
                   
   const username = data.username || 
                   data.user_username || 
                   data.user?.username ||
-                  data.handle ||
                   null;
-
-  console.log(`📝 Extracted member info:`, {
-    userId,
-    membershipId,
-    userEmail,
-    userName,
-    username,
-    customFieldsCount: Object.keys(customFields).length,
-    joinedAt: joinedAt.toISOString()
-  });
 
   try {
     const result = await pool.query(`
@@ -748,32 +803,9 @@ async function handleMembershipValid(companyId, data) {
     
     const member = result.rows[0];
     console.log(`✅ MEMBER ADDED: ${userId} (${member.name || 'Anonymous'}) to directory ${companyId}`);
-    console.log(`📊 Member ID: ${member.id}, Email: ${member.email || 'none'}`);
-    console.log(`📅 Join date: ${joinedAt.toISOString()}`);
-    
-    // If still no name, log what we tried to extract
-    if (!member.name) {
-      console.log(`⚠️ No name found for member ${userId}. Tried extracting from:`, {
-        'data.name': data.name,
-        'data.display_name': data.display_name,
-        'data.user_name': data.user_name,
-        'data.user?.name': data.user?.name,
-        'data.first_name': data.first_name,
-        'data.last_name': data.last_name,
-        'all_data_keys': Object.keys(data)
-      });
-    }
-    
-    // Update company activity
-    await pool.query(`
-      UPDATE whop_companies 
-      SET last_activity = CURRENT_TIMESTAMP 
-      WHERE company_id = $1
-    `, [companyId]);
     
   } catch (error) {
     console.error('❌ Error adding member:', error);
-    console.error('📦 Failed data:', { userId, companyId, membershipId, customFields });
   }
 }
 
@@ -799,8 +831,6 @@ async function handleMembershipInvalid(companyId, data) {
     if (result.rows.length > 0) {
       const member = result.rows[0];
       console.log(`✅ Member ${userId} (${member.name || 'Anonymous'}) set to inactive in ${companyId}`);
-    } else {
-      console.log(`⚠️ Member ${userId} not found in ${companyId}`);
     }
   } catch (error) {
     console.error('❌ Error updating member status:', error);
@@ -817,9 +847,7 @@ async function handleMembershipUpdate(companyId, data) {
   }
 
   console.log(`👤 Updating member ${userId} in company ${companyId}`);
-  console.log('📦 Update data:', JSON.stringify(data, null, 2));
   
-  // Extract custom fields from multiple possible locations
   const customFields = data.custom_field_responses || 
                       data.waitlist_responses || 
                       data.custom_fields || 
@@ -847,10 +875,8 @@ async function handleMembershipUpdate(companyId, data) {
     ]);
     
     if (result.rows.length > 0) {
-      const member = result.rows[0];
-      console.log(`✅ Member ${userId} (${member.name || 'Anonymous'}) updated in ${companyId}`);
+      console.log(`✅ Member ${userId} updated in ${companyId}`);
     } else {
-      console.log(`⚠️ Member ${userId} not found for update in ${companyId}, treating as new member`);
       // If member doesn't exist, treat as new member
       await handleMembershipValid(companyId, data);
     }
@@ -863,21 +889,68 @@ async function handleMembershipUpdate(companyId, data) {
 async function ensureCompanyExists(companyId) {
   try {
     await pool.query(`
-      INSERT INTO whop_companies (company_id, company_name) 
-      VALUES ($1, $1)
+      INSERT INTO whop_companies (company_id, company_name, installation_source) 
+      VALUES ($1, $2, 'webhook_first_contact')
       ON CONFLICT (company_id) 
       DO UPDATE SET last_activity = CURRENT_TIMESTAMP
-    `, [companyId]);
+    `, [companyId, generateCompanyName(companyId)]);
+    
+    console.log(`✅ Ensured directory exists for ${companyId}`);
   } catch (error) {
     console.error('⚠️ Error ensuring company exists:', error);
   }
 }
 
-// ==================== FRONTEND ROUTES ====================
+// ==================== FRONTEND ROUTES WITH INSTALLATION DETECTION ====================
 
-// Main app route
-app.get('/', (req, res) => {
+// Main app route with installation detection
+app.get('/', async (req, res) => {
+  console.log('🏠 Main app route accessed');
+  
+  // Detect and handle new installations
+  const installationResult = await detectAndHandleNewInstallation(req);
+  
+  if (installationResult?.isNewInstallation) {
+    console.log(`🎉 NEW APP INSTALLATION: ${installationResult.companyId} - Serving fresh directory`);
+  }
+  
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Directory-specific route (for direct access)
+app.get('/directory/:companyId', async (req, res) => {
+  const { companyId } = req.params;
+  console.log(`📂 Direct directory access: ${companyId}`);
+  
+  try {
+    // Check if directory exists
+    const company = await pool.query(`
+      SELECT company_id, company_name, created_at 
+      FROM whop_companies 
+      WHERE company_id = $1 AND status = 'active'
+    `, [companyId]);
+    
+    if (company.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Directory not found',
+        company_id: companyId,
+        help: 'This directory may not have been created yet. Try accessing through your Whop dashboard.'
+      });
+    }
+    
+    // Update last activity
+    await pool.query(`
+      UPDATE whop_companies 
+      SET last_activity = CURRENT_TIMESTAMP 
+      WHERE company_id = $1
+    `, [companyId]);
+    
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    
+  } catch (error) {
+    console.error('Error accessing directory:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // 404 handler for API routes
@@ -887,12 +960,9 @@ app.use('/api/*', (req, res) => {
     available_endpoints: [
       'GET /api/health',
       'GET /api/test',
-      'GET /api/members/auto',
-      'GET /api/companies',
-      'GET /api/directory/check/:companyId',
-      'GET /api/debug/company (for debugging company ID extraction)',
+      'GET /api/members/auto (auto-detects installation)',
+      'GET /api/installations (stats)',
       'POST /webhook/whop',
-      'POST /webhook/test (for testing member addition)'
     ]
   });
 });
@@ -906,32 +976,30 @@ app.get('*', (req, res) => {
 
 app.listen(port, () => {
   console.log('');
-  console.log('🎉 ===== WHOP MEMBER DIRECTORY SYSTEM =====');
+  console.log('🎉 ===== WHOP APP STORE READY MEMBER DIRECTORY =====');
   console.log(`🚀 Server running on port ${port}`);
-  console.log(`📱 App URL: ${process.env.NODE_ENV === 'production' ? 'https://whopboardy-production.up.railway.app' : `http://localhost:${port}`}/`);
-  console.log(`🔗 Webhook URL: ${process.env.NODE_ENV === 'production' ? 'https://whopboardy-production.up.railway.app' : `http://localhost:${port}`}/webhook/whop`);
+  console.log(`📱 App URL: ${process.env.NODE_ENV === 'production' ? 'https://your-app-domain.railway.app' : `http://localhost:${port}`}/`);
+  console.log(`🔗 Webhook URL: ${process.env.NODE_ENV === 'production' ? 'https://your-app-domain.railway.app' : `http://localhost:${port}`}/webhook/whop`);
   console.log('');
-  console.log('📋 How It Works:');
-  console.log('   1️⃣  FIRST APP VIEW → Creates new directory for community');
-  console.log('   2️⃣  MEMBERS JOIN → Webhooks add them to directory');
-  console.log('   3️⃣  SUBSEQUENT VIEWS → Shows existing directory');
+  console.log('🏪 APP STORE FEATURES:');
+  console.log('   ✅ Automatic directory creation on first view');
+  console.log('   ✅ Multi-tenant support (separate directories per company)');
+  console.log('   ✅ Installation tracking and analytics');
+  console.log('   ✅ Enhanced company ID detection');
+  console.log('   ✅ Webhook-based member synchronization');
   console.log('');
-  console.log('🔧 Features:');
-  console.log('   ✅ Auto-creates directories on first app view');
-  console.log('   ✅ Separate directories per Whop community');
-  console.log('   ✅ Real-time member updates via webhooks');
-  console.log('   ✅ Enhanced member name extraction');
-  console.log('   ✅ Smart company auto-detection');
-  console.log('   ✅ Support for 100+ members per directory');
-  console.log('   ✅ Custom field support');
+  console.log('📋 How App Store Installation Works:');
+  console.log('   1️⃣  USER INSTALLS → App added to their Whop dashboard');
+  console.log('   2️⃣  FIRST VIEW → Auto-detects company and creates directory');
+  console.log('   3️⃣  MEMBERS JOIN → Webhooks automatically add them');
+  console.log('   4️⃣  SUBSEQUENT VIEWS → Shows populated directory');
   console.log('');
-  console.log('🎯 Webhook Events (Available in Whop):');
+  console.log('🔧 Supported Whop Webhook Events:');
   console.log('   👤 membership_went_valid → Add member to directory');
   console.log('   ❌ membership_went_invalid → Remove member');
   console.log('   ✏️  membership_updated → Update member info');
   console.log('');
-  console.log('💡 Note: Directories auto-created when app is first viewed');
-  console.log('   (Works with actual Whop webhook events)');
+  console.log('🎯 Ready for Whop App Store submission!');
   console.log('');
 });
 

@@ -48,6 +48,8 @@
         .loading-subtext {
             font-size: 14px;
             color: #71717a;
+            text-align: center;
+            max-width: 400px;
         }
 
         /* Modern UI Styles */
@@ -68,6 +70,55 @@
         .app-container {
             min-height: 100vh;
             background: linear-gradient(180deg, #0a0a0a 0%, #111111 100%);
+        }
+
+        /* New Installation Welcome */
+        .welcome-banner {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            border-radius: 16px;
+            padding: 24px;
+            margin: 24px;
+            text-align: center;
+            display: none;
+        }
+
+        .welcome-banner.visible {
+            display: block;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .welcome-banner h2 {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: white;
+        }
+
+        .welcome-banner p {
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.9);
+            margin-bottom: 16px;
+        }
+
+        .welcome-banner .features {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+
+        .welcome-feature {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 14px;
         }
 
         /* Debug Panel */
@@ -144,6 +195,28 @@
         .header-title p {
             font-size: 14px;
             color: #71717a;
+        }
+
+        .installation-badge {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: none;
+        }
+
+        .installation-badge.visible {
+            display: inline-block;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
         }
 
         /* Stats Section */
@@ -399,6 +472,83 @@
             color: #ef4444;
         }
 
+        /* New Installation Empty State */
+        .new-installation-state {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.1));
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            border-radius: 16px;
+            padding: 60px 40px;
+            text-align: center;
+            margin: 20px;
+        }
+
+        .new-installation-state .state-icon {
+            font-size: 48px;
+            margin-bottom: 24px;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .new-installation-state .state-title {
+            font-size: 24px;
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, #ffffff, #a1a1aa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .new-installation-state .state-description {
+            font-size: 16px;
+            color: #a1a1aa;
+            margin-bottom: 24px;
+            line-height: 1.6;
+        }
+
+        .next-steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-top: 32px;
+        }
+
+        .next-step {
+            background: rgba(39, 39, 42, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: left;
+        }
+
+        .next-step-number {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .next-step h4 {
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .next-step p {
+            color: #a1a1aa;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
         /* Responsive Design */
         @media (max-width: 768px) {
             .header-content {
@@ -424,6 +574,15 @@
                 align-items: flex-start;
                 gap: 8px;
             }
+
+            .welcome-banner .features {
+                flex-direction: column;
+                gap: 12px;
+            }
+
+            .next-steps {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -431,16 +590,36 @@
     <!-- Loading Screen -->
     <div id="loadingScreen">
         <div class="loading-spinner"></div>
-        <div class="loading-text">Loading Member Directory</div>
-        <div class="loading-subtext">Auto-detecting your community...</div>
+        <div class="loading-text">Setting up your Member Directory</div>
+        <div class="loading-subtext">Detecting your community and preparing your personalized directory...</div>
     </div>
 
     <!-- Main App Container -->
     <div id="app" class="app-container" style="display: none;">
+        <!-- New Installation Welcome Banner -->
+        <div id="welcomeBanner" class="welcome-banner">
+            <h2>🎉 Welcome to Your Member Directory!</h2>
+            <p>Your personalized member directory has been created and is ready to use.</p>
+            <div class="features">
+                <div class="welcome-feature">
+                    <span>✅</span>
+                    <span>Auto-syncs with members</span>
+                </div>
+                <div class="welcome-feature">
+                    <span>🔒</span>
+                    <span>Private to your community</span>
+                </div>
+                <div class="welcome-feature">
+                    <span>⚡</span>
+                    <span>Real-time updates</span>
+                </div>
+            </div>
+        </div>
+
         <!-- Debug Panel -->
         <div id="debugPanel" class="debug-panel">
-            <h3>🔍 Enhanced Auto-Detection Debug</h3>
-            <div id="debugInfo" class="debug-info">Detecting company context...</div>
+            <h3>🔍 Installation & Detection Debug</h3>
+            <div id="debugInfo" class="debug-info">Detecting installation context...</div>
         </div>
 
         <!-- Header -->
@@ -457,6 +636,9 @@
                         <h1 id="appTitle">Member Directory</h1>
                         <p id="appSubtitle">Connect with fellow community members</p>
                     </div>
+                </div>
+                <div id="installationBadge" class="installation-badge">
+                    ✨ Just Installed
                 </div>
             </div>
         </header>
@@ -520,7 +702,7 @@
                     <div id="loadingState" class="loading-state">
                         <div class="state-spinner"></div>
                         <div class="state-title">Loading members...</div>
-                        <div class="state-description">Auto-detecting your community</div>
+                        <div class="state-description">Setting up your directory</div>
                     </div>
                     
                     <!-- Error State -->
@@ -537,6 +719,33 @@
                         <div id="errorDetails" style="margin-top: 12px; font-size: 12px; opacity: 0.7;"></div>
                     </div>
                     
+                    <!-- New Installation State -->
+                    <div id="newInstallationState" class="new-installation-state" style="display: none;">
+                        <div class="state-icon">🎉</div>
+                        <div class="state-title">Your Member Directory is Ready!</div>
+                        <div class="state-description">
+                            This is your brand new member directory. As members join your community, they'll automatically appear here.
+                        </div>
+                        
+                        <div class="next-steps">
+                            <div class="next-step">
+                                <div class="next-step-number">1</div>
+                                <h4>Invite Members</h4>
+                                <p>Share your Whop community link to start building your member base</p>
+                            </div>
+                            <div class="next-step">
+                                <div class="next-step-number">2</div>
+                                <h4>Auto-Sync</h4>
+                                <p>New members will automatically appear in this directory when they join</p>
+                            </div>
+                            <div class="next-step">
+                                <div class="next-step-number">3</div>
+                                <h4>Stay Connected</h4>
+                                <p>Members can find and connect with each other using this directory</p>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Empty State -->
                     <div id="emptyState" class="empty-state" style="display: none;">
                         <div class="state-icon">
@@ -545,8 +754,8 @@
                                 <path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01" stroke="currentColor" stroke-width="2"/>
                             </svg>
                         </div>
-                        <div class="state-title">No members found</div>
-                        <div class="state-description">Members will appear here once they join your community</div>
+                        <div class="state-title">No members yet</div>
+                        <div class="state-description">Members will appear here as they join your community</div>
                     </div>
 
                     <!-- Members Table -->
@@ -567,11 +776,11 @@
     </div>
 
     <script>
-        class EnhancedAutoDetectingWhopDirectory {
+        class AppStoreReadyWhopDirectory {
             constructor() {
                 this.members = [];
                 this.companyId = null;
-                this.detectedCompanyId = null;
+                this.isNewInstallation = false;
                 this.debugMode = this.isDebugMode();
                 this.error = null;
                 this.detectionMethods = [];
@@ -586,7 +795,7 @@
 
             async init() {
                 try {
-                    console.log('🚀 Initializing Enhanced Auto-Detecting Whop Directory...');
+                    console.log('🚀 Initializing App Store Ready Whop Directory...');
                     
                     if (this.debugMode) {
                         document.getElementById('debugPanel').classList.add('visible');
@@ -617,11 +826,12 @@
             }
 
             detectCompanyId() {
-                console.log('🔍 Enhanced auto-detection starting...');
+                console.log('🔍 App Store auto-detection starting...');
                 this.detectionMethods = [];
                 
                 const methods = [
                     { name: 'URL Parameters', fn: () => this.getCompanyFromURL() },
+                    { name: 'Whop Headers', fn: () => this.getCompanyFromHeaders() },
                     { name: 'Whop Referrer', fn: () => this.getCompanyFromReferer() },
                     { name: 'Parent Window Context', fn: () => this.getCompanyFromParent() },
                     { name: 'PostMessage API', fn: () => this.setupPostMessageListener() }
@@ -659,7 +869,18 @@
 
             getCompanyFromURL() {
                 const params = new URLSearchParams(window.location.search);
-                return params.get('company') || params.get('company_id');
+                return params.get('company') || params.get('company_id') || params.get('page_id');
+            }
+
+            getCompanyFromHeaders() {
+                // Try to access headers that might be set by Whop
+                const meta = document.querySelector('meta[name="whop-company-id"]');
+                if (meta) return meta.getAttribute('content');
+                
+                const dataCompany = document.documentElement.getAttribute('data-whop-company');
+                if (dataCompany) return dataCompany;
+                
+                return null;
             }
 
             getCompanyFromReferer() {
@@ -668,18 +889,23 @@
                 
                 if (!referer) return null;
 
-                // Enhanced Whop URL patterns
+                // Enhanced Whop URL patterns for app store
                 const patterns = [
+                    { name: 'App Store Install', regex: /\/apps\/([^\/\?]+)/ },
+                    { name: 'Company Apps', regex: /\/([^\/]+)\/apps\/[^\/]+/ },
                     { name: 'biz_ pattern', regex: /\/(biz_[a-zA-Z0-9]+)/ },
-                    { name: 'whop.com username', regex: /whop\.com\/([^\/]+)\/[^\/]+/ },
-                    { name: 'whop.com direct', regex: /whop\.com\/([^\/\?]+)/ },
-                    { name: 'company parameter', regex: /[?&]company=([^&]+)/ },
-                    { name: 'subdomain', regex: /^https?:\/\/([^\.]+)\.whop\.com/ }
+                    { name: 'Company Dashboard', regex: /\/([^\/]+)\/dashboard/ },
+                    { name: 'Company Members', regex: /\/([^\/]+)\/members/ },
+                    { name: 'Whop.com username', regex: /whop\.com\/([^\/]+)\/[^\/]+/ },
+                    { name: 'Whop.com direct', regex: /whop\.com\/([^\/\?]+)/ },
+                    { name: 'Company parameter', regex: /[?&]company=([^&]+)/ },
+                    { name: 'Page ID parameter', regex: /[?&]page_id=([^&]+)/ },
+                    { name: 'Subdomain', regex: /^https?:\/\/([^\.]+)\.whop\.com/ }
                 ];
 
                 for (const pattern of patterns) {
                     const match = referer.match(pattern.regex);
-                    if (match && match[1] && match[1] !== 'www' && match[1] !== 'app') {
+                    if (match && match[1] && match[1] !== 'www' && match[1] !== 'app' && match[1] !== 'apps') {
                         console.log(`🎯 Extracted via ${pattern.name}: ${match[1]}`);
                         return match[1];
                     }
@@ -690,23 +916,19 @@
 
             getCompanyFromParent() {
                 try {
-                    // Try to detect if we're in an iframe and get context
                     if (window !== window.parent) {
-                        // We're embedded, try to get info from parent
                         const parentUrl = document.referrer;
                         if (parentUrl) {
                             return this.extractCompanyFromUrl(parentUrl);
                         }
                     }
                 } catch (error) {
-                    // Expected cross-origin restriction
                     console.log('Parent access restricted (normal for production)');
                 }
                 return null;
             }
 
             setupPostMessageListener() {
-                // Listen for company context from parent window
                 window.addEventListener('message', (event) => {
                     console.log('📨 Received postMessage:', event.data);
                     
@@ -718,7 +940,6 @@
                     }
                 });
 
-                // Request company context from parent if we're embedded
                 if (window !== window.parent) {
                     try {
                         window.parent.postMessage({ 
@@ -731,7 +952,7 @@
                     }
                 }
 
-                return null; // This method doesn't return immediately
+                return null;
             }
 
             extractCompanyFromUrl(url) {
@@ -744,6 +965,7 @@
                     /whop\.com\/([^\/]+)\/[^\/]+/,
                     /whop\.com\/([^\/\?]+)/,
                     /[?&]company=([^&]+)/,
+                    /[?&]page_id=([^&]+)/,
                     /^https?:\/\/([^\.]+)\.whop\.com/
                 ];
 
@@ -766,9 +988,10 @@
                         ).join('<br>');
                         
                         debugInfo.innerHTML = `
-                            <strong>Detection Results:</strong><br>
+                            <strong>App Store Detection Results:</strong><br>
                             ${methodsInfo}<br><br>
                             <strong>Final Company ID:</strong> ${this.companyId || 'none detected'}<br>
+                            <strong>Installation Status:</strong> ${this.isNewInstallation ? 'NEW' : 'EXISTING'}<br>
                             <strong>URL:</strong> ${window.location.href}<br>
                             <strong>Referrer:</strong> ${document.referrer || 'none'}<br>
                             <strong>Context:</strong> ${window !== window.parent ? 'embedded (iframe)' : 'standalone'}<br>
@@ -780,10 +1003,9 @@
 
             async loadMembers() {
                 try {
-                    console.log('📡 Loading members...');
+                    console.log('📡 Loading members from App Store Ready API...');
                     this.updateDetectionInfo('Loading members...');
                     
-                    // Use detected company ID or fall back to auto-detection
                     const endpoint = this.companyId ? 
                         `/api/members/${this.companyId}` : 
                         '/api/members/auto';
@@ -792,15 +1014,13 @@
                         'Content-Type': 'application/json'
                     };
 
-                    // Add all possible company headers
                     if (this.companyId) {
                         headers['x-whop-company-id'] = this.companyId;
                         headers['x-company-id'] = this.companyId;
-                        headers['x-business-id'] = this.companyId;
+                        headers['x-page-id'] = this.companyId;
                     }
 
                     console.log(`📡 Fetching from: ${endpoint}`);
-                    console.log('📡 Headers:', headers);
 
                     const response = await fetch(endpoint, { headers });
                     
@@ -814,13 +1034,18 @@
                     if (data.success) {
                         this.members = data.members || [];
                         this.companyId = data.company_id;
-                        this.detectedCompanyId = data.company_id;
+                        this.isNewInstallation = data.is_new_installation || false;
                         
-                        console.log(`✅ Loaded ${this.members.length} members for ${data.company_id}`);
+                        console.log(`✅ Loaded ${this.members.length} members for ${data.company_id} (${this.isNewInstallation ? 'NEW' : 'EXISTING'} installation)`);
                         
                         this.updateUI(data);
                         this.showMembers();
-                        this.updateDetectionInfo(`✅ Success: ${data.company_id} (${this.members.length} members)`);
+                        this.updateDetectionInfo(`✅ Success: ${data.company_id} (${this.members.length} members, ${this.isNewInstallation ? 'NEW' : 'EXISTING'})`);
+                        
+                        // Show installation welcome if this is a new installation
+                        if (this.isNewInstallation) {
+                            this.showInstallationWelcome();
+                        }
                     } else {
                         throw new Error(data.error || 'Failed to load members');
                     }
@@ -833,6 +1058,32 @@
                 }
             }
 
+            showInstallationWelcome() {
+                console.log('🎉 Showing new installation welcome');
+                
+                // Show welcome banner
+                const welcomeBanner = document.getElementById('welcomeBanner');
+                if (welcomeBanner) {
+                    welcomeBanner.classList.add('visible');
+                    
+                    // Auto-hide after 10 seconds
+                    setTimeout(() => {
+                        welcomeBanner.classList.remove('visible');
+                    }, 10000);
+                }
+                
+                // Show installation badge
+                const installationBadge = document.getElementById('installationBadge');
+                if (installationBadge) {
+                    installationBadge.classList.add('visible');
+                    
+                    // Auto-hide after 30 seconds
+                    setTimeout(() => {
+                        installationBadge.classList.remove('visible');
+                    }, 30000);
+                }
+            }
+
             updateUI(data) {
                 // Update header
                 const title = document.getElementById('appTitle');
@@ -840,12 +1091,13 @@
                 
                 if (title) {
                     title.textContent = data.company_name ? 
-                        `${data.company_name} Directory` : 
+                        `${data.company_name}` : 
                         'Member Directory';
                 }
                 
                 if (subtitle) {
-                    subtitle.textContent = `Connect with fellow community members • ${data.company_id}`;
+                    const installationText = this.isNewInstallation ? ' • Just Installed' : '';
+                    subtitle.textContent = `Connect with fellow community members • ${data.company_id}${installationText}`;
                 }
 
                 // Update stats
@@ -877,18 +1129,26 @@
 
             showMembers() {
                 if (this.members.length === 0) {
-                    this.showEmpty();
+                    if (this.isNewInstallation) {
+                        this.showNewInstallationState();
+                    } else {
+                        this.showEmpty();
+                    }
                     return;
                 }
 
                 const tableBody = document.getElementById('membersTableBody');
                 const table = document.getElementById('membersTable');
                 
-                // Generate table rows
                 tableBody.innerHTML = this.members.map(member => this.createMemberRow(member)).join('');
                 
                 table.style.display = 'table';
                 this.hideOtherStates('table');
+            }
+
+            showNewInstallationState() {
+                document.getElementById('newInstallationState').style.display = 'block';
+                this.hideOtherStates('new-installation');
             }
 
             createMemberRow(member) {
@@ -965,7 +1225,7 @@
                 errorDetails.innerHTML = this.debugMode ? `
                     <strong>Debug Info:</strong><br>
                     Detected Company: ${this.companyId || 'none'}<br>
-                    Server Company: ${this.detectedCompanyId || 'none'}<br>
+                    Installation Status: ${this.isNewInstallation ? 'NEW' : 'EXISTING'}<br>
                     URL: ${window.location.href}<br>
                     Referrer: ${document.referrer || 'none'}<br>
                     Detection Methods: ${this.detectionMethods.filter(m => m.success).length}/${this.detectionMethods.length} successful
@@ -985,7 +1245,8 @@
                     'loading': document.getElementById('loadingState'),
                     'table': document.getElementById('membersTable'),
                     'error': document.getElementById('errorState'),
-                    'empty': document.getElementById('emptyState')
+                    'empty': document.getElementById('emptyState'),
+                    'new-installation': document.getElementById('newInstallationState')
                 };
 
                 Object.keys(states).forEach(state => {
@@ -998,14 +1259,14 @@
 
         // Initialize when DOM is ready
         document.addEventListener('DOMContentLoaded', () => {
-            window.memberDirectory = new EnhancedAutoDetectingWhopDirectory();
+            window.memberDirectory = new AppStoreReadyWhopDirectory();
         });
 
         // If DOM is already loaded, initialize immediately
         if (document.readyState === 'loading') {
             // Wait for DOMContentLoaded
         } else {
-            window.memberDirectory = new EnhancedAutoDetectingWhopDirectory();
+            window.memberDirectory = new AppStoreReadyWhopDirectory();
         }
     </script>
 </body>
