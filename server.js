@@ -70,25 +70,41 @@ pool.connect()
     console.log('✅ Database connected successfully');
     
     try {
-      // Create companies table with enhanced fields for app store
+      // Create companies table - BACKWARD COMPATIBLE with existing installed_at column
       await client.query(`
         CREATE TABLE IF NOT EXISTS whop_companies (
           id SERIAL PRIMARY KEY,
           company_id VARCHAR(255) UNIQUE NOT NULL,
           company_name VARCHAR(255),
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          installed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           last_activity TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-          first_viewed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           webhook_secret VARCHAR(500),
           settings JSONB DEFAULT '{}',
-          status VARCHAR(50) DEFAULT 'active',
-          installation_source VARCHAR(100) DEFAULT 'app_store',
-          app_version VARCHAR(50) DEFAULT '3.2.0'
+          status VARCHAR(50) DEFAULT 'active'
         );
         
         CREATE INDEX IF NOT EXISTS idx_whop_companies_company_id ON whop_companies(company_id);
         CREATE INDEX IF NOT EXISTS idx_whop_companies_status ON whop_companies(status);
       `);
+      
+      // Add app store columns if they don't exist (for backward compatibility)
+      try {
+        await client.query(`
+          ALTER TABLE whop_companies 
+          ADD COLUMN IF NOT EXISTS first_viewed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+        `);
+        await client.query(`
+          ALTER TABLE whop_companies 
+          ADD COLUMN IF NOT EXISTS installation_source VARCHAR(100) DEFAULT 'app_store';
+        `);
+        await client.query(`
+          ALTER TABLE whop_companies 
+          ADD COLUMN IF NOT EXISTS app_version VARCHAR(50) DEFAULT '3.2.0';
+        `);
+        console.log('✅ App store columns added for compatibility');
+      } catch (error) {
+        console.log('ℹ️ App store columns already exist or couldn\'t be added');
+      }
       
       // Create or update members table
       await client.query(`
@@ -105,8 +121,7 @@ pool.connect()
           joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           status VARCHAR(50) DEFAULT 'active',
-          UNIQUE(user_id, company_id),
-          FOREIGN KEY (company_id) REFERENCES whop_companies(company_id) ON DELETE CASCADE
+          UNIQUE(user_id, company_id)
         );
         
         CREATE INDEX IF NOT EXISTS idx_whop_members_company_id ON whop_members(company_id);
@@ -115,7 +130,7 @@ pool.connect()
         CREATE INDEX IF NOT EXISTS idx_whop_members_status ON whop_members(status);
       `);
       
-      // Create installation tracking table
+      // Create installation tracking table (optional, for analytics)
       await client.query(`
         CREATE TABLE IF NOT EXISTS app_installations (
           id SERIAL PRIMARY KEY,
@@ -124,8 +139,7 @@ pool.connect()
           installation_method VARCHAR(100) DEFAULT 'first_view',
           user_agent TEXT,
           referer_url TEXT,
-          installation_data JSONB DEFAULT '{}',
-          FOREIGN KEY (company_id) REFERENCES whop_companies(company_id) ON DELETE CASCADE
+          installation_data JSONB DEFAULT '{}'
         );
         
         CREATE INDEX IF NOT EXISTS idx_app_installations_company_id ON app_installations(company_id);
@@ -168,11 +182,10 @@ pool.connect()
       const stats = await client.query(`
         SELECT 
           (SELECT COUNT(*) FROM whop_companies WHERE status = 'active') as active_directories,
-          (SELECT COUNT(*) FROM whop_members WHERE status = 'active') as total_active_members,
-          (SELECT COUNT(*) FROM app_installations WHERE installed_at > NOW() - INTERVAL '24 hours') as installs_today
+          (SELECT COUNT(*) FROM whop_members WHERE status = 'active') as total_active_members
       `);
       
-      console.log(`📊 Current stats: ${stats.rows[0].active_directories} active directories, ${stats.rows[0].total_active_members} members, ${stats.rows[0].installs_today} installs today`);
+      console.log(`📊 Current stats: ${stats.rows[0].active_directories} active directories, ${stats.rows[0].total_active_members} members`);
       
     } catch (createError) {
       console.error('❌ Error setting up database:', createError);
@@ -300,13 +313,13 @@ async function detectAndHandleNewInstallation(req) {
   try {
     // Check if company directory already exists
     const existingCompany = await pool.query(`
-      SELECT company_id, created_at, installation_source 
+      SELECT company_id, installed_at, installation_source 
       FROM whop_companies 
       WHERE company_id = $1
     `, [companyId]);
     
     if (existingCompany.rows.length > 0) {
-      console.log(`✅ Existing directory found for ${companyId} (created: ${existingCompany.rows[0].created_at})`);
+      console.log(`✅ Existing directory found for ${companyId} (created: ${existingCompany.rows[0].installed_at})`);
       
       // Update last activity
       await pool.query(`
@@ -330,7 +343,7 @@ async function detectAndHandleNewInstallation(req) {
       INSERT INTO whop_companies (
         company_id, 
         company_name, 
-        created_at, 
+        installed_at, 
         first_viewed_at, 
         last_activity, 
         installation_source,
@@ -340,29 +353,33 @@ async function detectAndHandleNewInstallation(req) {
       RETURNING *
     `, [companyId, generateCompanyName(companyId)]);
     
-    // Track the installation
-    await pool.query(`
-      INSERT INTO app_installations (
-        company_id, 
-        installed_at, 
-        installation_method, 
-        user_agent, 
-        referer_url,
-        installation_data
-      ) VALUES ($1, CURRENT_TIMESTAMP, 'first_view', $2, $3, $4)
-    `, [
-      companyId,
-      req.headers['user-agent'] || '',
-      req.headers.referer || '',
-      JSON.stringify({
-        ip: req.ip || req.connection.remoteAddress,
-        headers: {
-          'x-page-id': req.headers['x-page-id'],
-          'x-whop-company-id': req.headers['x-whop-company-id']
-        },
-        timestamp: new Date().toISOString()
-      })
-    ]);
+    // Track the installation (optional)
+    try {
+      await pool.query(`
+        INSERT INTO app_installations (
+          company_id, 
+          installed_at, 
+          installation_method, 
+          user_agent, 
+          referer_url,
+          installation_data
+        ) VALUES ($1, CURRENT_TIMESTAMP, 'first_view', $2, $3, $4)
+      `, [
+        companyId,
+        req.headers['user-agent'] || '',
+        req.headers.referer || '',
+        JSON.stringify({
+          ip: req.ip || req.connection.remoteAddress,
+          headers: {
+            'x-page-id': req.headers['x-page-id'],
+            'x-whop-company-id': req.headers['x-whop-company-id']
+          },
+          timestamp: new Date().toISOString()
+        })
+      ]);
+    } catch (installError) {
+      console.log('⚠️ Could not track installation (non-critical):', installError.message);
+    }
     
     console.log(`🎯 DIRECTORY CREATED: ${companyId} - Ready for members!`);
     console.log(`📊 Company Name: ${newCompany.rows[0].company_name}`);
@@ -409,7 +426,8 @@ app.get('/api/health', (req, res) => {
       'app-store-ready',
       'multi-tenant-directories',
       'enhanced-company-detection',
-      'webhook-member-sync'
+      'webhook-member-sync',
+      'backward-compatible'
     ]
   });
 });
@@ -428,8 +446,7 @@ app.get('/api/test', async (req, res) => {
       SELECT 
         COUNT(*) as total_directories,
         COUNT(CASE WHEN status = 'active' THEN 1 END) as active_directories,
-        (SELECT COUNT(*) FROM whop_members WHERE status = 'active') as total_members,
-        (SELECT COUNT(*) FROM app_installations WHERE installed_at > NOW() - INTERVAL '24 hours') as installs_today
+        (SELECT COUNT(*) FROM whop_members WHERE status = 'active') as total_members
       FROM whop_companies
     `);
     stats = statsResult.rows[0];
@@ -502,12 +519,12 @@ app.get('/api/members/:companyId?', async (req, res) => {
   }
   
   try {
-    // Get members for this company
+    // Get members for this company - BACKWARD COMPATIBLE QUERY
     const result = await pool.query(`
       SELECT 
         m.id, m.user_id, m.membership_id, m.email, m.name, m.username, 
         m.custom_fields, m.joined_at, m.status, m.updated_at,
-        c.company_name, c.created_at as directory_created
+        c.company_name, c.installed_at as directory_created
       FROM whop_members m
       RIGHT JOIN whop_companies c ON m.company_id = c.company_id
       WHERE c.company_id = $1 AND c.status = 'active'
@@ -566,14 +583,14 @@ async function getAvailableCompanies() {
       SELECT 
         c.company_id,
         c.company_name,
-        c.created_at,
+        c.installed_at as created_at,
         COUNT(m.id) as member_count,
         MAX(c.last_activity) as latest_activity
       FROM whop_companies c
       LEFT JOIN whop_members m ON c.company_id = m.company_id AND m.status = 'active'
       WHERE c.status = 'active'
-      GROUP BY c.company_id, c.company_name, c.created_at
-      ORDER BY c.created_at DESC
+      GROUP BY c.company_id, c.company_name, c.installed_at
+      ORDER BY c.installed_at DESC
       LIMIT 20
     `);
     return result.rows;
@@ -592,18 +609,17 @@ app.get('/api/installations', async (req, res) => {
         COUNT(CASE WHEN installed_at > NOW() - INTERVAL '24 hours' THEN 1 END) as today,
         COUNT(CASE WHEN installed_at > NOW() - INTERVAL '7 days' THEN 1 END) as this_week,
         COUNT(CASE WHEN installed_at > NOW() - INTERVAL '30 days' THEN 1 END) as this_month
-      FROM app_installations
+      FROM whop_companies
     `);
     
     const recent = await pool.query(`
       SELECT 
-        ai.company_id,
-        ai.installed_at,
+        wc.company_id,
+        wc.installed_at,
         wc.company_name,
-        (SELECT COUNT(*) FROM whop_members WHERE company_id = ai.company_id AND status = 'active') as member_count
-      FROM app_installations ai
-      LEFT JOIN whop_companies wc ON ai.company_id = wc.company_id
-      ORDER BY ai.installed_at DESC
+        (SELECT COUNT(*) FROM whop_members WHERE company_id = wc.company_id AND status = 'active') as member_count
+      FROM whop_companies wc
+      ORDER BY wc.installed_at DESC
       LIMIT 10
     `);
     
@@ -925,7 +941,7 @@ app.get('/directory/:companyId', async (req, res) => {
   try {
     // Check if directory exists
     const company = await pool.query(`
-      SELECT company_id, company_name, created_at 
+      SELECT company_id, company_name, installed_at 
       FROM whop_companies 
       WHERE company_id = $1 AND status = 'active'
     `, [companyId]);
@@ -987,6 +1003,7 @@ app.listen(port, () => {
   console.log('   ✅ Installation tracking and analytics');
   console.log('   ✅ Enhanced company ID detection');
   console.log('   ✅ Webhook-based member synchronization');
+  console.log('   ✅ Backward compatible with existing databases');
   console.log('');
   console.log('📋 How App Store Installation Works:');
   console.log('   1️⃣  USER INSTALLS → App added to their Whop dashboard');
