@@ -1,4 +1,49 @@
-// ==================== FIXED AUTO-DETECTION SERVER.JS ====================
+// Test webhook endpoint to simulate member addition
+app.post('/webhook/test', async (req, res) => {
+  console.log('🧪 Test webhook received');
+  
+  // Simulate a membership.went_valid webhook
+  const testWebhook = {
+    action: 'membership.went_valid',
+    data: {
+      id: 'mem_test123',
+      user_id: 'user_test123',
+      page_id: 'biz_6GuEa8lMu5p9yl', // Your company ID
+      created_at: Math.floor(Date.now() / 1000), // Current timestamp in seconds
+      status: 'completed',
+      valid: true,
+      custom_field_responses: {
+        'test_field': 'test_value'
+      }
+    }
+  };
+  
+  console.log('🧪 Simulating webhook with data:', JSON.stringify(testWebhook, null, 2));
+  
+  try {
+    // Process the test webhook
+    const eventType = testWebhook.action;
+    const data = testWebhook.data;
+    const companyId = data.page_id;
+    
+    await handleMembershipValid(companyId, data);
+    
+    res.json({
+      success: true,
+      message: 'Test webhook processed successfully',
+      simulated_event: eventType,
+      company_id: companyId,
+      test_user_id: data.user_id
+    });
+    
+  } catch (error) {
+    console.error('❌ Test webhook failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});// ==================== FIXED AUTO-DETECTION SERVER.JS ====================
 
 const express = require('express');
 const { Pool } = require('pg');
@@ -134,6 +179,29 @@ pool.connect()
       
       console.log(`📊 Current stats: ${stats.rows[0].total_companies} companies, ${stats.rows[0].total_members} members`);
       
+      // Show recent activity
+      try {
+        const recentActivity = await client.query(`
+          SELECT 
+            c.company_id,
+            c.company_name,
+            COUNT(m.id) as member_count,
+            MAX(m.joined_at) as latest_join
+          FROM whop_companies c
+          LEFT JOIN whop_members m ON c.company_id = m.company_id AND m.status = 'active'
+          GROUP BY c.company_id, c.company_name
+          ORDER BY member_count DESC
+          LIMIT 5
+        `);
+        
+        console.log('🏢 Top Companies by Member Count:');
+        recentActivity.rows.forEach(company => {
+          console.log(`   ${company.company_name || company.company_id}: ${company.member_count} members`);
+        });
+      } catch (activityError) {
+        console.log('📊 Could not fetch company activity stats');
+      }
+      
     } catch (createError) {
       console.error('❌ Error setting up database:', createError);
     }
@@ -156,18 +224,21 @@ function extractCompanyId(req) {
     req.headers['x-whop-company-id'],
     req.headers['x-company-id'], 
     req.headers['x-business-id'],
+    req.headers['x-page-id'],
     
     // URL parameters
     req.query.company,
     req.query.company_id,
     req.query.business_id,
+    req.query.page_id,
     
-    // Body data (for webhooks)
+    // Body data (for webhooks) - check nested data too
     req.body?.company_id,
     req.body?.business_id,
-    req.body?.product?.company_id,
+    req.body?.page_id,
     req.body?.data?.company_id,
     req.body?.data?.business_id,
+    req.body?.data?.page_id,
     req.body?.data?.product?.company_id,
     
     // Extract from referer URL (when embedded in Whop)
@@ -178,9 +249,12 @@ function extractCompanyId(req) {
     headers: {
       'x-whop-company-id': req.headers['x-whop-company-id'],
       'x-company-id': req.headers['x-company-id'],
+      'x-page-id': req.headers['x-page-id'],
       'referer': req.headers.referer
     },
     query: req.query,
+    body_keys: req.body ? Object.keys(req.body) : [],
+    page_id: req.body?.page_id,
     extracted_from_referer: extractCompanyFromReferer(req.headers.referer)
   });
   
@@ -295,18 +369,44 @@ app.get('/api/test', async (req, res) => {
   const extractedId = extractCompanyId(req);
   const companyLookup = extractedId ? await findCompanyInDatabase(extractedId) : null;
   
+  // Get current member count
+  let memberCount = 0;
+  try {
+    if (companyLookup) {
+      const countResult = await pool.query(`
+        SELECT COUNT(*) as count FROM whop_members 
+        WHERE company_id = $1 AND status = 'active'
+      `, [companyLookup.company_id]);
+      memberCount = parseInt(countResult.rows[0].count);
+    }
+  } catch (error) {
+    console.error('Error getting member count:', error);
+  }
+  
   res.json({ 
     success: true, 
     extracted_company_id: extractedId || 'none',
     company_lookup: companyLookup,
+    current_member_count: memberCount,
     detection_debug: {
       headers: {
         'x-whop-company-id': req.headers['x-whop-company-id'] || 'missing',
         'x-company-id': req.headers['x-company-id'] || 'missing',
+        'x-page-id': req.headers['x-page-id'] || 'missing',
         'referer': req.headers.referer || 'missing'
       },
       query_params: req.query,
       extracted_from_referer: extractCompanyFromReferer(req.headers.referer)
+    },
+    webhook_info: {
+      endpoint: '/webhook/whop',
+      supported_formats: ['action + data', 'event_type + data'],
+      supported_events: [
+        'membership.went_valid',
+        'membership_went_valid', 
+        'membership.created',
+        'user_joined'
+      ]
     },
     timestamp: new Date().toISOString()
   });
@@ -450,28 +550,52 @@ app.post('/webhook/whop', async (req, res) => {
     console.log('📦 Headers:', req.headers);
     console.log('📦 Body:', JSON.stringify(req.body, null, 2));
     
-    const { event_type, data } = req.body;
+    // Handle both event_type and action formats
+    const eventType = req.body.event_type || req.body.action;
+    const data = req.body.data || req.body;
     
-    if (!event_type || !data) {
-      console.error('❌ Invalid webhook payload - missing event_type or data');
-      return res.status(400).json({ error: 'Invalid webhook payload' });
+    if (!eventType) {
+      console.error('❌ Invalid webhook payload - missing event_type or action');
+      console.error('📦 Available keys:', Object.keys(req.body));
+      return res.status(400).json({ 
+        error: 'Invalid webhook payload - missing event_type or action',
+        received_keys: Object.keys(req.body)
+      });
     }
 
-    // Extract company ID from webhook
-    const companyId = extractCompanyId(req);
+    if (!data) {
+      console.error('❌ Invalid webhook payload - missing data');
+      return res.status(400).json({ error: 'Invalid webhook payload - missing data' });
+    }
+
+    // Extract company ID from webhook - check multiple locations
+    let companyId = extractCompanyId(req);
+    
+    // If not found in headers/query, try to extract from webhook data
+    if (!companyId) {
+      companyId = data.page_id || 
+                  data.company_id || 
+                  data.business_id ||
+                  (data.data && data.data.page_id) ||
+                  (data.data && data.data.company_id);
+      
+      console.log(`🔍 Extracted company ID from webhook data: ${companyId}`);
+    }
     
     if (!companyId) {
       console.error('❌ No company ID found in webhook');
       console.error('📦 Available data keys:', Object.keys(data));
       console.error('📦 Headers:', Object.keys(req.headers));
+      console.error('📦 Data content:', JSON.stringify(data, null, 2));
       return res.status(400).json({ 
         error: 'No company ID found in webhook payload',
         received_data: Object.keys(data),
-        received_headers: Object.keys(req.headers)
+        received_headers: Object.keys(req.headers),
+        help: 'Company ID should be in page_id, company_id, or headers'
       });
     }
 
-    console.log(`📨 Processing ${event_type} for company ${companyId}`);
+    console.log(`📨 Processing ${eventType} for company ${companyId}`);
     
     // Log member count before processing
     try {
@@ -484,7 +608,7 @@ app.post('/webhook/whop', async (req, res) => {
     }
 
     // Handle different webhook events
-    switch (event_type) {
+    switch (eventType) {
       case 'app_installed':
       case 'app.installed':
         await handleAppInstallation(companyId, data);
@@ -520,8 +644,13 @@ app.post('/webhook/whop', async (req, res) => {
         break;
         
       default:
-        console.log(`ℹ️ Unhandled event type: ${event_type}`);
+        console.log(`ℹ️ Unhandled event type: ${eventType}`);
         console.log(`📦 Event data:`, JSON.stringify(data, null, 2));
+        // Still process as potential membership event
+        if (data.status === 'completed' && data.valid === true) {
+          console.log('🔄 Treating as membership validation event');
+          await handleMembershipValid(companyId, data);
+        }
     }
 
     
@@ -537,7 +666,7 @@ app.post('/webhook/whop', async (req, res) => {
 
     res.json({ 
       success: true, 
-      event_type,
+      event_type: eventType,
       company_id: companyId,
       message: 'Webhook processed successfully',
       timestamp: new Date().toISOString()
@@ -580,6 +709,7 @@ async function handleMembershipValid(companyId, data) {
   
   if (!userId) {
     console.error('❌ No user_id in membership webhook');
+    console.error('📦 Available data keys:', Object.keys(data));
     return;
   }
 
@@ -589,13 +719,12 @@ async function handleMembershipValid(companyId, data) {
   // Ensure company exists
   await ensureCompanyExists(companyId);
   
-  // Parse join date
+  // Parse join date - handle Whop timestamp format
   let joinedAt = new Date();
   if (data.created_at) {
+    // Whop sends timestamps in seconds, convert to milliseconds
     const timestamp = parseInt(data.created_at);
-    if (timestamp > 946684800000) {
-      joinedAt = new Date(timestamp);
-    } else if (timestamp > 946684800) {
+    if (timestamp > 946684800) { // If > year 2000 in seconds
       joinedAt = new Date(timestamp * 1000);
     } else {
       joinedAt = new Date(data.created_at);
@@ -609,6 +738,11 @@ async function handleMembershipValid(companyId, data) {
                       data.responses || 
                       {};
 
+  // Get additional user info if available
+  const userEmail = data.email || data.user_email || null;
+  const userName = data.name || data.display_name || data.user_name || null;
+  const username = data.username || data.user_username || null;
+
   try {
     const result = await pool.query(`
       INSERT INTO whop_members (
@@ -618,9 +752,9 @@ async function handleMembershipValid(companyId, data) {
       ON CONFLICT (user_id, company_id) 
       DO UPDATE SET 
         membership_id = EXCLUDED.membership_id,
-        email = EXCLUDED.email,
-        name = EXCLUDED.name,
-        username = EXCLUDED.username,
+        email = COALESCE(EXCLUDED.email, whop_members.email),
+        name = COALESCE(EXCLUDED.name, whop_members.name),
+        username = COALESCE(EXCLUDED.username, whop_members.username),
         custom_fields = EXCLUDED.custom_fields,
         status = 'active',
         updated_at = CURRENT_TIMESTAMP
@@ -629,9 +763,9 @@ async function handleMembershipValid(companyId, data) {
       userId,
       membershipId,
       companyId,
-      data.email || null,
-      data.name || data.display_name || null,
-      data.username || null,
+      userEmail,
+      userName,
+      username,
       JSON.stringify(customFields),
       joinedAt
     ]);
@@ -639,6 +773,7 @@ async function handleMembershipValid(companyId, data) {
     const member = result.rows[0];
     console.log(`✅ Member ${userId} (${member.name || 'Anonymous'}) added to ${companyId}`);
     console.log(`📊 Member ID: ${member.id}, Email: ${member.email || 'none'}`);
+    console.log(`📅 Join date: ${joinedAt.toISOString()}`);
     
     // Update company activity
     await pool.query(`
@@ -764,7 +899,8 @@ app.use('/api/*', (req, res) => {
       'GET /api/health',
       'GET /api/test',
       'GET /api/members/auto',
-      'POST /webhook/whop'
+      'POST /webhook/whop',
+      'POST /webhook/test (for testing member addition)'
     ]
   });
 });
@@ -786,9 +922,12 @@ app.listen(port, () => {
   console.log('🔧 Enhanced Features:');
   console.log('   ✅ Smart Whop URL parsing');
   console.log('   ✅ Database company lookup');
-  console.log('   ✅ Username mapping');
+  console.log('   ✅ Hardcoded username mapping (jaredstivala)');
   console.log('   ✅ Intelligent fallback detection');
   console.log('   ✅ Enhanced debugging');
+  console.log('   ✅ Support for 100+ members');
+  console.log('   ✅ Real-time member updates via webhooks');
+  console.log('   ✅ Multiple webhook event types');
   console.log('');
 });
 
