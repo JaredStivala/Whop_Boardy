@@ -131,19 +131,20 @@ class WhopMemberDirectory {
     createMemberRow(member) {
         const row = document.createElement('tr');
         
-        // Enhanced member info cell with name and email
+        // Enhanced member info cell with username as primary identifier
         const memberInfoCell = document.createElement('td');
         memberInfoCell.classList.add('member-info-cell');
         
-        const memberName = member.name || member.username || 'Anonymous Member';
-        const memberEmail = member.email || 'No email provided';
+        // Priority: username > name > fallback
+        const primaryName = member.username || member.name || 'Anonymous';
+        const secondaryInfo = member.name && member.username !== member.name ? member.name : member.email || 'No email';
         
         memberInfoCell.innerHTML = `
             <div style="font-weight: 600; color: #ffffff; margin-bottom: 2px;">
-                ${this.escapeHtml(memberName)}
+                @${this.escapeHtml(primaryName)}
             </div>
             <div style="font-size: 0.85rem; color: #b0b0b0;">
-                ${this.escapeHtml(memberEmail)}
+                ${this.escapeHtml(secondaryInfo)}
             </div>
         `;
         

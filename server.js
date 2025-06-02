@@ -5,6 +5,36 @@ const { Pool } = require('pg');
 const crypto = require('crypto');
 require('dotenv').config();
 
+// Environment variable validation
+function validateEnvironment() {
+    const requiredVars = {
+      'WHOP_API_KEY': process.env.WHOP_API_KEY,
+      'WHOP_WEBHOOK_SECRET': process.env.WHOP_WEBHOOK_SECRET,
+      'DATABASE_URL': process.env.DATABASE_URL
+    };
+  
+    console.log('🔍 Environment Variables Check:');
+    
+    let allValid = true;
+    Object.entries(requiredVars).forEach(([key, value]) => {
+      if (value) {
+        console.log(`✅ ${key}: ${key === 'WHOP_API_KEY' ? value.substring(0, 10) + '...' : 'Set'}`);
+      } else {
+        console.error(`❌ ${key}: Missing!`);
+        allValid = false;
+      }
+    });
+  
+    if (!allValid) {
+      console.error('❌ Some required environment variables are missing!');
+    }
+    
+    return allValid;
+  }
+  
+  // Call this when server starts
+  validateEnvironment();
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -210,6 +240,8 @@ app.post('/webhook/whop', async (req, res) => {
   }
 });
 
+// Replace the handleMembershipValid function in server.js with this enhanced version:
+
 async function handleMembershipValid(data) {
     try {
       const { user, id: membershipId, product } = data;
@@ -222,89 +254,81 @@ async function handleMembershipValid(data) {
       }
   
       console.log(`✅ Processing membership for user ${userId} in company ${companyId}`);
-      console.log('🔍 Full webhook data:', JSON.stringify(data, null, 2));
   
-      // --- Extract User Name ---
-      const userName = user?.name || 
+      // --- Fetch User Details from Whop API ---
+      let whopUserData = null;
+      try {
+        console.log(`🔍 Fetching user details for ${userId} from Whop API...`);
+        
+        const userResponse = await fetch(`https://api.whop.com/api/v5/app/users/${userId}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${process.env.WHOP_API_KEY}`,
+            'Content-Type': 'application/json'
+          }
+        });
+  
+        if (userResponse.ok) {
+          whopUserData = await userResponse.json();
+          console.log('👤 User data from Whop API:', JSON.stringify(whopUserData, null, 2));
+        } else {
+          console.error(`❌ Failed to fetch user data: ${userResponse.status} - ${userResponse.statusText}`);
+          const errorText = await userResponse.text();
+          console.error('Error response:', errorText);
+        }
+      } catch (fetchError) {
+        console.error('❌ Error fetching user data from Whop API:', fetchError);
+      }
+  
+      // --- Extract User Information ---
+      // Priority: Whop API data > webhook data > fallback
+      const userName = whopUserData?.name || 
+                       whopUserData?.username || 
+                       user?.name || 
                        user?.username || 
                        user?.display_name || 
-                       user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` :
-                       user?.first_name ||
-                       data.name ||
-                       data.username ||
-                       null;
+                       'Anonymous Member';
       
-      console.log('👤 Extracted name:', userName);
-  
-      // --- Extract Email --- 
-      const userEmail = user?.email || 
+      const userUsername = whopUserData?.username || 
+                           user?.username || 
+                           whopUserData?.name ||
+                           user?.name ||
+                           'anonymous';
+      
+      const userEmail = whopUserData?.email || 
+                        user?.email || 
                         data.email || 
-                        user?.email_address ||
-                        data.email_address ||
                         null;
-      
-      console.log('📧 Extracted email:', userEmail);
+  
+      console.log('📋 Extracted user info:', {
+        name: userName,
+        username: userUsername,
+        email: userEmail
+      });
   
       // --- Extract Custom Fields / Waitlist Responses ---
       let customFields = {};
       
-      // Check all possible locations for custom field data
+      // Check webhook data for custom fields
       const potentialSources = [
-        // Direct webhook data
-        { key: 'data.custom_fields', data: data.custom_fields },
         { key: 'data.custom_field_responses', data: data.custom_field_responses },
+        { key: 'data.custom_fields', data: data.custom_fields },
         { key: 'data.waitlist_responses', data: data.waitlist_responses },
         { key: 'data.form_responses', data: data.form_responses },
         { key: 'data.responses', data: data.responses },
-        { key: 'data.metadata', data: data.metadata },
-        { key: 'data.checkout_fields', data: data.checkout_fields },
-        { key: 'data.checkout_custom_fields', data: data.checkout_custom_fields },
-        
-        // User object sources
-        { key: 'user.custom_fields', data: user?.custom_fields },
-        { key: 'user.custom_field_responses', data: user?.custom_field_responses },
-        { key: 'user.waitlist_responses', data: user?.waitlist_responses },
-        { key: 'user.form_responses', data: user?.form_responses },
-        { key: 'user.responses', data: user?.responses },
-        { key: 'user.metadata', data: user?.metadata },
-        { key: 'user.profile', data: user?.profile },
-        
-        // Product/membership sources
-        { key: 'product.custom_fields', data: product?.custom_fields },
-        { key: 'membership.custom_fields', data: data.membership?.custom_fields },
-        { key: 'membership.responses', data: data.membership?.responses },
-        
-        // Alternative field names Whop might use
-        { key: 'data.application_responses', data: data.application_responses },
-        { key: 'data.onboarding_responses', data: data.onboarding_responses },
-        { key: 'data.signup_responses', data: data.signup_responses }
+        { key: 'data.metadata', data: data.metadata }
       ];
   
-      // Collect custom fields from all sources
       potentialSources.forEach(source => {
         if (source.data && typeof source.data === 'object' && !Array.isArray(source.data)) {
-          console.log(`🔍 Found data in ${source.key}:`, JSON.stringify(source.data, null, 2));
+          console.log(`🔍 Found custom field data in ${source.key}:`, JSON.stringify(source.data, null, 2));
           customFields = { ...customFields, ...source.data };
         }
       });
   
-      // Also check for any fields that might contain user responses
-      Object.keys(data).forEach(key => {
-        if (key.toLowerCase().includes('response') || 
-            key.toLowerCase().includes('field') || 
-            key.toLowerCase().includes('form') ||
-            key.toLowerCase().includes('waitlist')) {
-          const value = data[key];
-          if (value && typeof value === 'object' && !Array.isArray(value)) {
-            console.log(`🔍 Found potential custom field data in ${key}:`, JSON.stringify(value, null, 2));
-            customFields = { ...customFields, ...value };
-          }
-        }
-      });
+      console.log('📋 Final custom fields:', JSON.stringify(customFields, null, 2));
   
-      console.log('📋 Final collected customFields:', JSON.stringify(customFields, null, 2));
-  
-      // Store member in database with all extracted data
+      // --- Store Member in Database ---
       await pool.query(`
         INSERT INTO whop_members (
           company_id, 
@@ -331,12 +355,13 @@ async function handleMembershipValid(data) {
         membershipId,
         userEmail,
         userName,
-        userName, // Use name as username for now
+        userUsername,
         JSON.stringify(customFields)
       ]);
   
       console.log(`🎉 Member ${userId} stored successfully with:`, {
         name: userName,
+        username: userUsername,
         email: userEmail,
         customFieldsCount: Object.keys(customFields).length
       });
@@ -469,3 +494,46 @@ function handleContext(context) {
   console.log('✅ Using company ID:', companyId);
   return companyId;
 }
+
+app.get('/api/test-whop-api', async (req, res) => {
+    try {
+      const testUserId = req.query.userId || 'user_iSfIwrTJoy3Ab'; // Use the user ID from your logs
+      
+      console.log(`🧪 Testing Whop API with user ID: ${testUserId}`);
+      console.log(`🔑 Using API key: ${process.env.WHOP_API_KEY ? process.env.WHOP_API_KEY.substring(0, 10) + '...' : 'MISSING'}`);
+      
+      const response = await fetch(`https://api.whop.com/api/v5/app/users/${testUserId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${process.env.WHOP_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      });
+  
+      console.log(`📡 API Response status: ${response.status}`);
+      
+      if (response.ok) {
+        const userData = await response.json();
+        console.log('✅ API call successful:', userData);
+        res.json({
+          success: true,
+          userData,
+          message: 'Whop API is working correctly'
+        });
+      } else {
+        const errorText = await response.text();
+        console.error(`❌ API call failed: ${response.status} - ${errorText}`);
+        res.status(response.status).json({
+          success: false,
+          error: errorText,
+          status: response.status
+        });
+      }
+    } catch (error) {
+      console.error('❌ Test API call error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  });
