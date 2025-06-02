@@ -210,90 +210,141 @@ app.post('/webhook/whop', async (req, res) => {
   }
 });
 
-// Handle membership becoming valid
 async function handleMembershipValid(data) {
-  try {
-    const { user, id: membershipId, product } = data;
-    const userId = user?.id || data.user_id;
-    const companyId = product?.business_id || data.page_id || data.company_id;
-    
-    if (!userId || !membershipId || !companyId) {
-      console.error('❌ Missing required fields (userId, membershipId, or companyId)', { userId, membershipId, companyId });
-      return;
-    }
-
-    console.log(`✅ Processing membership for user ${userId} in company ${companyId}`);
-    console.log('🔍 Webhook data.user object:', JSON.stringify(user, null, 2));
-    console.log('🔍 Webhook data.product object:', JSON.stringify(product, null, 2));
-    console.log('🔍 Webhook data root keys:', Object.keys(data));
-
-    // --- Extract Email --- 
-    const userEmail = user?.email || data.email || null;
-    console.log('📧 Extracted email:', userEmail);
-
-    // --- Extract Custom Fields ---
-    let customFields = {};
-    
-    const potentialCustomFieldSources = [
-      { key: 'custom_fields', data: data.custom_fields },
-      { key: 'custom_field_responses', data: data.custom_field_responses }, 
-      { key: 'metadata', data: data.metadata },
-      { key: 'form_responses', data: data.form_responses },
-      { key: 'checkout_custom_fields', data: data.checkout_custom_fields },
-      // Check user object for custom fields too
-      { key: 'user.custom_fields', data: user?.custom_fields },
-      { key: 'user.custom_field_responses', data: user?.custom_field_responses },
-      { key: 'user.metadata', data: user?.metadata },
-      { key: 'user.form_responses', data: user?.form_responses },
-      { key: 'user.checkout_custom_fields', data: user?.checkout_custom_fields },
-    ];
-
-    potentialCustomFieldSources.forEach(source => {
-        if (source.data) {
-            console.log(`🔍 Found potential data in ${source.key}:`, JSON.stringify(source.data, null, 2));
-            // Check if the data is a plain object before attempting to merge
-            if (typeof source.data === 'object' && source.data !== null && !Array.isArray(source.data)) {
-                 console.log(`✅ Merging custom fields from ${source.key}`);
-                 customFields = { ...customFields, ...source.data };
-            } else {
-                 console.warn(`⚠️ Data in ${source.key} is not a mergeable object, skipping:`, source.data);
-            }
+    try {
+      const { user, id: membershipId, product } = data;
+      const userId = user?.id || data.user_id;
+      const companyId = product?.business_id || data.page_id || data.company_id;
+      
+      if (!userId || !membershipId || !companyId) {
+        console.error('❌ Missing required fields (userId, membershipId, or companyId)', { userId, membershipId, companyId });
+        return;
+      }
+  
+      console.log(`✅ Processing membership for user ${userId} in company ${companyId}`);
+      console.log('🔍 Full webhook data:', JSON.stringify(data, null, 2));
+  
+      // --- Extract User Name ---
+      const userName = user?.name || 
+                       user?.username || 
+                       user?.display_name || 
+                       user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` :
+                       user?.first_name ||
+                       data.name ||
+                       data.username ||
+                       null;
+      
+      console.log('👤 Extracted name:', userName);
+  
+      // --- Extract Email --- 
+      const userEmail = user?.email || 
+                        data.email || 
+                        user?.email_address ||
+                        data.email_address ||
+                        null;
+      
+      console.log('📧 Extracted email:', userEmail);
+  
+      // --- Extract Custom Fields / Waitlist Responses ---
+      let customFields = {};
+      
+      // Check all possible locations for custom field data
+      const potentialSources = [
+        // Direct webhook data
+        { key: 'data.custom_fields', data: data.custom_fields },
+        { key: 'data.custom_field_responses', data: data.custom_field_responses },
+        { key: 'data.waitlist_responses', data: data.waitlist_responses },
+        { key: 'data.form_responses', data: data.form_responses },
+        { key: 'data.responses', data: data.responses },
+        { key: 'data.metadata', data: data.metadata },
+        { key: 'data.checkout_fields', data: data.checkout_fields },
+        { key: 'data.checkout_custom_fields', data: data.checkout_custom_fields },
+        
+        // User object sources
+        { key: 'user.custom_fields', data: user?.custom_fields },
+        { key: 'user.custom_field_responses', data: user?.custom_field_responses },
+        { key: 'user.waitlist_responses', data: user?.waitlist_responses },
+        { key: 'user.form_responses', data: user?.form_responses },
+        { key: 'user.responses', data: user?.responses },
+        { key: 'user.metadata', data: user?.metadata },
+        { key: 'user.profile', data: user?.profile },
+        
+        // Product/membership sources
+        { key: 'product.custom_fields', data: product?.custom_fields },
+        { key: 'membership.custom_fields', data: data.membership?.custom_fields },
+        { key: 'membership.responses', data: data.membership?.responses },
+        
+        // Alternative field names Whop might use
+        { key: 'data.application_responses', data: data.application_responses },
+        { key: 'data.onboarding_responses', data: data.onboarding_responses },
+        { key: 'data.signup_responses', data: data.signup_responses }
+      ];
+  
+      // Collect custom fields from all sources
+      potentialSources.forEach(source => {
+        if (source.data && typeof source.data === 'object' && !Array.isArray(source.data)) {
+          console.log(`🔍 Found data in ${source.key}:`, JSON.stringify(source.data, null, 2));
+          customFields = { ...customFields, ...source.data };
         }
-    });
-
-    console.log('📋 Final collected customFields before DB:', JSON.stringify(customFields, null, 2));
-
-    // Store member in database
-    await pool.query(`
-      INSERT INTO whop_members (
-        company_id, 
-        user_id, 
-        membership_id,
-        email,
-        custom_fields,
-        status
-      )
-      VALUES ($1, $2, $3, $4, $5, 'active')
-      ON CONFLICT (membership_id)
-      DO UPDATE SET
-        email = EXCLUDED.email,
-        custom_fields = EXCLUDED.custom_fields,
-        status = 'active',
-        updated_at = CURRENT_TIMESTAMP
-    `, [
-      companyId,
-      userId,
-      membershipId,
-      userEmail,
-      JSON.stringify(customFields) // Ensure we stringify the potentially complex object
-    ]);
-
-    console.log(`🎉 Member ${userId} stored successfully with custom fields.`);
-
-  } catch (error) {
-    console.error('❌ Error handling membership valid:', error);
+      });
+  
+      // Also check for any fields that might contain user responses
+      Object.keys(data).forEach(key => {
+        if (key.toLowerCase().includes('response') || 
+            key.toLowerCase().includes('field') || 
+            key.toLowerCase().includes('form') ||
+            key.toLowerCase().includes('waitlist')) {
+          const value = data[key];
+          if (value && typeof value === 'object' && !Array.isArray(value)) {
+            console.log(`🔍 Found potential custom field data in ${key}:`, JSON.stringify(value, null, 2));
+            customFields = { ...customFields, ...value };
+          }
+        }
+      });
+  
+      console.log('📋 Final collected customFields:', JSON.stringify(customFields, null, 2));
+  
+      // Store member in database with all extracted data
+      await pool.query(`
+        INSERT INTO whop_members (
+          company_id, 
+          user_id, 
+          membership_id,
+          email,
+          name,
+          username,
+          custom_fields,
+          status
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
+        ON CONFLICT (membership_id)
+        DO UPDATE SET
+          email = EXCLUDED.email,
+          name = EXCLUDED.name,
+          username = EXCLUDED.username,
+          custom_fields = EXCLUDED.custom_fields,
+          status = 'active',
+          updated_at = CURRENT_TIMESTAMP
+      `, [
+        companyId,
+        userId,
+        membershipId,
+        userEmail,
+        userName,
+        userName, // Use name as username for now
+        JSON.stringify(customFields)
+      ]);
+  
+      console.log(`🎉 Member ${userId} stored successfully with:`, {
+        name: userName,
+        email: userEmail,
+        customFieldsCount: Object.keys(customFields).length
+      });
+  
+    } catch (error) {
+      console.error('❌ Error handling membership valid:', error);
+    }
   }
-}
 
 // Handle membership becoming invalid
 async function handleMembershipInvalid(data) {
@@ -311,31 +362,30 @@ async function handleMembershipInvalid(data) {
   }
 }
 
+// Replace the /api/directory/:companyId route in server.js with this:
+
 app.get('/api/directory/:companyId', async (req, res) => {
     try {
-      // --- START: Pre-flight DB Check ---
+      // Pre-flight DB check
       console.log('ℹ️ Attempting Pre-flight DB check...');
       const preCheck = await pool.query("SELECT 'db_ping_ok' as check_status, NOW() as current_time;");
       console.log('✅ Pre-flight DB check successful:', preCheck.rows);
-      // --- END: Pre-flight DB Check ---
   
-      // Your existing debug logs
-      console.log('DEBUG: Raw req.params:', JSON.stringify(req.params));
-      console.log('DEBUG: Raw req.query:', JSON.stringify(req.query));
-    
       const { companyId } = req.params;
       const status = req.query.status || 'active'; 
     
       console.log(`DEBUG: Using companyId for query: '${companyId}'`);
       console.log(`DEBUG: Using status for query: '${status}'`);
       
-      // Your main query to get members
+      // Enhanced query to get all member data including names
       const result = await pool.query(`
         SELECT 
           id,
           user_id,
           membership_id,
           email,
+          name,
+          username,
           custom_fields,
           joined_at,
           status
@@ -344,7 +394,7 @@ app.get('/api/directory/:companyId', async (req, res) => {
         ORDER BY joined_at DESC
       `, [companyId, status]);
   
-      console.log("🔍 Raw DB result:", result.rows); // This is the one we want to see populated!
+      console.log("🔍 Raw DB result:", result.rows);
     
       res.json({
         success: true,
@@ -353,6 +403,8 @@ app.get('/api/directory/:companyId', async (req, res) => {
           user_id: member.user_id,
           membership_id: member.membership_id,
           email: member.email,
+          name: member.name, // Include name in response
+          username: member.username, // Include username in response
           waitlist_responses: member.custom_fields || {},
           joined_at: member.joined_at,
           status: member.status
@@ -361,15 +413,13 @@ app.get('/api/directory/:companyId', async (req, res) => {
       });
   
     } catch (error) {
-      // This catch block will now also catch errors from the pre-flight check
       console.error('🟥 ERROR IN /api/directory/:companyId ROUTE:', error.message, error.stack);
       if (error.code) { 
            console.error('🟥 DB ERROR CODE (if available):', error.code);
       }
       res.status(500).json({ error: 'Failed to fetch directory' });
     }
-  });
-  // END OF REPLACED ROUTE
+});
 
 // Serve the native app directory page
 app.get('/app', (req, res) => {

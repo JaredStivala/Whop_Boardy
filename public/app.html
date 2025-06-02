@@ -111,6 +111,22 @@
             opacity: 0.9;
             color: #b0e0e6;
         }
+        .member-info-cell {
+            color: #ffffff;
+            font-size: 0.9rem;
+            padding: 12px 15px;
+        }
+
+        .member-info-cell div:first-child {
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 2px;
+        }
+
+        .member-info-cell div:last-child {
+            font-size: 0.85rem;
+            color: #b0b0b0;
+}
 
         /* New Table Styles */
         .members-table {
@@ -252,11 +268,10 @@
             <p>Members will appear here once they join your community!</p>
         </div>
 
-        <!-- Member Table -->
         <table id="membersTable" class="members-table">
             <thead>
                 <tr>
-                    <th>Email</th>
+                    <th>Member</th>
                     <th>Custom Fields</th>
                     <th style="text-align: right;">Joined</th>
                 </tr>
@@ -265,8 +280,6 @@
                 <!-- Member rows will be inserted here by JavaScript -->
             </tbody>
         </table>
-        <!-- End Member Table -->
-    </div>
 
     <script src="member-directory.js" defer></script>
 </body>

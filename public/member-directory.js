@@ -131,9 +131,21 @@ class WhopMemberDirectory {
     createMemberRow(member) {
         const row = document.createElement('tr');
         
-        const emailCell = document.createElement('td');
-        emailCell.classList.add('member-email-cell');
-        emailCell.textContent = this.escapeHtml(member.email || 'No email provided');
+        // Enhanced member info cell with name and email
+        const memberInfoCell = document.createElement('td');
+        memberInfoCell.classList.add('member-info-cell');
+        
+        const memberName = member.name || member.username || 'Anonymous Member';
+        const memberEmail = member.email || 'No email provided';
+        
+        memberInfoCell.innerHTML = `
+            <div style="font-weight: 600; color: #ffffff; margin-bottom: 2px;">
+                ${this.escapeHtml(memberName)}
+            </div>
+            <div style="font-size: 0.85rem; color: #b0b0b0;">
+                ${this.escapeHtml(memberEmail)}
+            </div>
+        `;
         
         const customFieldsCell = document.createElement('td');
         customFieldsCell.classList.add('custom-fields-cell');
@@ -144,7 +156,7 @@ class WhopMemberDirectory {
         joinedDateCell.textContent = member.joined_at ? new Date(member.joined_at).toLocaleDateString() : 'N/A';
         joinedDateCell.style.textAlign = 'right';
 
-        row.appendChild(emailCell);
+        row.appendChild(memberInfoCell);
         row.appendChild(customFieldsCell);
         row.appendChild(joinedDateCell);
         
