@@ -547,7 +547,8 @@ app.get('/api/members/:companyId?', async (req, res) => {
     }
   }
   
-  if (!companyId) {
+  // Ensure we have a valid company ID (not "auto")
+  if (!companyId || companyId === 'auto') {
     // Try to get available companies for selection
     const availableCompanies = await getAvailableCompanies();
     
@@ -571,6 +572,15 @@ app.get('/api/members/:companyId?', async (req, res) => {
   }
   
   try {
+    // Ensure we use the final detected company ID for the database query
+    const finalCompanyId = installationResult?.companyId || companyId;
+    
+    if (!finalCompanyId || finalCompanyId === 'auto') {
+      throw new Error('No valid company ID detected');
+    }
+    
+    console.log(`🗄️ Querying database for company: ${finalCompanyId}`);
+    
     // Get members for this company - BACKWARD COMPATIBLE QUERY
     const result = await pool.query(`
       SELECT 
@@ -581,7 +591,7 @@ app.get('/api/members/:companyId?', async (req, res) => {
       RIGHT JOIN whop_companies c ON m.company_id = c.company_id
       WHERE c.company_id = $1 AND c.status = 'active'
       ORDER BY m.joined_at DESC
-    `, [companyId]);
+    `, [finalCompanyId]);
     
     const members = result.rows
       .filter(row => row.user_id) // Only include actual members
@@ -602,29 +612,40 @@ app.get('/api/members/:companyId?', async (req, res) => {
     const companyInfo = result.rows[0] || {};
     const isNewDirectory = installationResult?.isNewInstallation || false;
 
-    console.log(`✅ Returning ${members.length} members for ${companyId} (${isNewDirectory ? 'NEW' : 'EXISTING'} directory)`);
+    console.log(`✅ Returning ${members.length} members for ${finalCompanyId} (${isNewDirectory ? 'NEW' : 'EXISTING'} directory)`);
 
+    // Ensure we return the detected company ID, not "auto"
+    const finalCompanyId = installationResult?.companyId || companyId;
+    
     res.json({
       success: true,
       members: members,
       count: members.length,
-      company_id: companyId,
-      company_name: companyInfo.company_name || companyId,
+      company_id: finalCompanyId,  // Use the detected ID, not the "auto" parameter
+      company_name: companyInfo.company_name || generateCompanyName(finalCompanyId),
       is_new_installation: isNewDirectory,
       directory_created: companyInfo.directory_created,
-      detection_method: 'whop_apps_auto_detect',
+      detection_method: installationResult ? 'whop_apps_auto_detect' : 'manual',
+      detected_from: extractCompanyFromWhopApps(req.headers.referer) ? 'whop_apps_domain' : 'standard_detection',
       message: isNewDirectory ? 
         'Welcome! Your member directory has been created. Members will appear here as they join your community.' :
         `Loaded ${members.length} members from your directory.`,
+      debug_info: {
+        original_param: req.params.companyId,
+        detected_id: extractCompanyId(req),
+        whop_apps_extraction: extractCompanyFromWhopApps(req.headers.referer),
+        installation_result: installationResult
+      },
       timestamp: new Date().toISOString()
     });
 
   } catch (error) {
+    const finalCompanyId = installationResult?.companyId || companyId;
     console.error('❌ Error fetching members:', error);
     res.status(500).json({
       success: false,
       error: error.message,
-      company_id: companyId
+      company_id: finalCompanyId === 'auto' ? 'detection_failed' : finalCompanyId
     });
   }
 });

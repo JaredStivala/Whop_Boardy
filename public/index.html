@@ -3,56 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Member Directory - Whop Community</title>
-    <meta name="description" content="Connect with fellow community members">
-    <link rel="icon" type="image/x-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👥</text></svg>">
-    
+    <title>Member Directory - Community Hub</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        /* Loading screen styles */
-        #loadingScreen {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(180deg, #0a0a0a 0%, #111111 100%);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            z-index: 9999;
-            color: white;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Inter', sans-serif;
-        }
-        
-        .loading-spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid rgba(255, 255, 255, 0.1);
-            border-radius: 50%;
-            border-top-color: #3b82f6;
-            animation: spin 1s ease-in-out infinite;
-            margin-bottom: 20px;
-        }
-        
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        
-        .loading-text {
-            font-size: 18px;
-            font-weight: 600;
-            margin-bottom: 8px;
-        }
-        
-        .loading-subtext {
-            font-size: 14px;
-            color: #71717a;
-            text-align: center;
-            max-width: 400px;
-        }
-
-        /* Modern UI Styles */
         * {
             margin: 0;
             padding: 0;
@@ -60,1214 +13,551 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Inter', sans-serif;
-            background: #0a0a0a;
-            color: #ffffff;
-            line-height: 1.5;
-            overflow-x: hidden;
-        }
-
-        .app-container {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            background: linear-gradient(180deg, #0a0a0a 0%, #111111 100%);
+            color: #333;
         }
 
-        /* New Installation Welcome */
-        .welcome-banner {
-            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-            border-radius: 16px;
-            padding: 24px;
-            margin: 24px;
-            text-align: center;
-            display: none;
-        }
-
-        .welcome-banner.visible {
-            display: block;
-            animation: slideIn 0.5s ease-out;
-        }
-
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateY(-20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .welcome-banner h2 {
-            font-size: 24px;
-            font-weight: 700;
-            margin-bottom: 8px;
-            color: white;
-        }
-
-        .welcome-banner p {
-            font-size: 16px;
-            color: rgba(255, 255, 255, 0.9);
-            margin-bottom: 16px;
-        }
-
-        .welcome-banner .features {
-            display: flex;
-            justify-content: center;
-            gap: 24px;
-            margin-top: 16px;
-            flex-wrap: wrap;
-        }
-
-        .welcome-feature {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            color: rgba(255, 255, 255, 0.9);
-            font-size: 14px;
-        }
-
-        /* Debug Panel */
-        .debug-panel {
-            background: rgba(255, 193, 7, 0.1);
-            border: 1px solid rgba(255, 193, 7, 0.3);
-            border-radius: 8px;
-            margin: 20px 24px;
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
             padding: 20px;
-            display: none;
         }
 
-        .debug-panel.visible {
-            display: block;
-        }
-
-        .debug-panel h3 {
-            color: #ffc107;
-            margin-bottom: 16px;
-            font-size: 16px;
-        }
-
-        .debug-info {
-            font-size: 14px;
-            color: #e0e0e0;
-        }
-
-        /* Header Styles */
-        .app-header {
-            background: rgba(17, 17, 17, 0.8);
-            backdrop-filter: blur(20px);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }
-
-        .header-content {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px 24px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .header-left {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-        }
-
-        .app-icon {
-            width: 48px;
-            height: 48px;
-            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
             color: white;
         }
 
-        .header-title h1 {
-            font-size: 24px;
-            font-weight: 700;
-            margin-bottom: 2px;
-            background: linear-gradient(135deg, #ffffff, #a1a1aa);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.3);
         }
 
-        .header-title p {
-            font-size: 14px;
-            color: #71717a;
-        }
-
-        .installation-badge {
-            background: linear-gradient(135deg, #10b981, #059669);
-            color: white;
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            display: none;
-        }
-
-        .installation-badge.visible {
-            display: inline-block;
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.7; }
-        }
-
-        /* Stats Section */
-        .stats-section {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 32px 24px;
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
         }
 
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 20px;
+            margin-bottom: 40px;
         }
 
         .stat-card {
-            background: rgba(39, 39, 42, 0.5);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 16px;
-            padding: 24px;
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            transition: all 0.3s;
+            background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
         }
 
         .stat-card:hover {
-            background: rgba(39, 39, 42, 0.8);
-            border-color: rgba(255, 255, 255, 0.12);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+            transform: translateY(-5px);
+            box-shadow: 0 15px 45px rgba(0,0,0,0.15);
         }
 
-        .stat-icon {
-            width: 48px;
-            height: 48px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-        }
-
-        .stat-icon-primary {
-            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-            color: white;
-        }
-
-        .stat-icon-success {
-            background: linear-gradient(135deg, #10b981, #059669);
-            color: white;
-        }
-
-        .stat-icon-warning {
-            background: linear-gradient(135deg, #f59e0b, #d97706);
-            color: white;
-        }
-
-        .stat-value {
-            font-size: 32px;
-            font-weight: 700;
-            color: #ffffff;
-            line-height: 1;
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #5a67d8;
+            margin-bottom: 5px;
         }
 
         .stat-label {
-            font-size: 14px;
-            color: #a1a1aa;
-            font-weight: 500;
-        }
-
-        /* Members Table */
-        .table-section {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 24px 40px;
-        }
-
-        .table-container {
-            background: rgba(39, 39, 42, 0.4);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 16px;
-            overflow: hidden;
-            backdrop-filter: blur(10px);
-        }
-
-        .table-header {
-            padding: 24px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .table-header h2 {
-            font-size: 20px;
-            font-weight: 600;
-            color: #ffffff;
-        }
-
-        .table-meta {
-            font-size: 14px;
-            color: #71717a;
-        }
-
-        .members-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        .members-table thead {
-            background: rgba(24, 24, 27, 0.8);
-        }
-
-        .members-table th {
-            padding: 16px 20px;
-            text-align: left;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            color: #a1a1aa;
-            font-size: 12px;
-            font-weight: 600;
+            color: #666;
+            font-size: 0.9rem;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 1px;
         }
 
-        .members-table td {
-            padding: 20px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            vertical-align: top;
+        .members-section {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
 
-        .members-table tbody tr:hover {
-            background: rgba(255, 255, 255, 0.03);
+        .search-bar {
+            width: 100%;
+            padding: 15px 20px;
+            border: 2px solid #e2e8f0;
+            border-radius: 50px;
+            font-size: 1rem;
+            margin-bottom: 30px;
+            transition: all 0.3s ease;
         }
 
-        /* Member Cell Styles */
-        .member-cell {
-            display: flex;
-            align-items: center;
-            gap: 12px;
+        .search-bar:focus {
+            outline: none;
+            border-color: #5a67d8;
+            box-shadow: 0 0 0 3px rgba(90, 103, 216, 0.1);
+        }
+
+        .members-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .member-card {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            border-radius: 15px;
+            padding: 25px;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(0,0,0,0.05);
+        }
+
+        .member-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
         }
 
         .member-avatar {
-            width: 44px;
-            height: 44px;
-            border-radius: 12px;
-            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #5a67d8, #667eea);
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
-            font-weight: 600;
-            font-size: 16px;
-            flex-shrink: 0;
-        }
-
-        .member-info {
-            flex: 1;
-            min-width: 0;
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 15px;
         }
 
         .member-name {
-            font-size: 16px;
+            font-size: 1.2rem;
             font-weight: 600;
-            color: #ffffff;
-            margin-bottom: 2px;
+            margin-bottom: 5px;
+            color: #2d3748;
         }
 
         .member-email {
-            font-size: 14px;
-            color: #71717a;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 10px;
         }
 
-        .custom-fields {
-            max-width: 300px;
-            font-size: 14px;
-            color: #ffffff;
+        .member-date {
+            color: #888;
+            font-size: 0.8rem;
         }
 
-        .field-item {
-            margin-bottom: 8px;
-        }
-
-        .field-item:last-child {
-            margin-bottom: 0;
-        }
-
-        .field-label {
-            font-size: 12px;
-            color: #71717a;
-            font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .field-value {
-            color: #ffffff;
-        }
-
-        .no-fields {
-            color: #71717a;
-            font-style: italic;
-        }
-
-        .date-cell {
-            text-align: right;
-            color: #a1a1aa;
-            font-size: 14px;
-            white-space: nowrap;
-        }
-
-        /* Loading and Error States */
-        .loading-state, .empty-state, .error-state {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 60px 20px;
+        .loading {
             text-align: center;
+            padding: 40px;
+            color: #666;
         }
 
-        .state-spinner {
-            width: 32px;
-            height: 32px;
-            border: 3px solid rgba(255, 255, 255, 0.1);
+        .spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #5a67d8;
             border-radius: 50%;
-            border-top-color: #3b82f6;
-            animation: spin 1s ease-in-out infinite;
-            margin-bottom: 16px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
         }
 
-        .state-icon {
-            margin-bottom: 16px;
-            color: #71717a;
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
 
-        .state-title {
-            font-size: 18px;
-            color: #ffffff;
-            margin-bottom: 8px;
+        .error {
+            background: #fed7d7;
+            color: #c53030;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-left: 4px solid #c53030;
         }
 
-        .state-description {
-            color: #71717a;
-            font-size: 14px;
+        .success {
+            background: #c6f6d5;
+            color: #22543d;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-left: 4px solid #22543d;
         }
 
-        .error-state .state-title {
-            color: #ef4444;
-        }
-
-        /* New Installation Empty State */
-        .new-installation-state {
-            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.1));
-            border: 1px solid rgba(59, 130, 246, 0.2);
-            border-radius: 16px;
-            padding: 60px 40px;
+        .empty-state {
             text-align: center;
-            margin: 20px;
+            padding: 60px 20px;
+            color: #666;
         }
 
-        .new-installation-state .state-icon {
-            font-size: 48px;
-            margin-bottom: 24px;
-            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+        .empty-state i {
+            font-size: 4rem;
+            color: #cbd5e0;
+            margin-bottom: 20px;
         }
 
-        .new-installation-state .state-title {
-            font-size: 24px;
-            margin-bottom: 12px;
-            background: linear-gradient(135deg, #ffffff, #a1a1aa);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+        .empty-state h3 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+            color: #4a5568;
         }
 
-        .new-installation-state .state-description {
-            font-size: 16px;
-            color: #a1a1aa;
-            margin-bottom: 24px;
+        .empty-state p {
+            font-size: 1rem;
             line-height: 1.6;
         }
 
-        .next-steps {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 16px;
-            margin-top: 32px;
-        }
-
-        .next-step {
-            background: rgba(39, 39, 42, 0.5);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 12px;
+        .debug-info {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
             padding: 20px;
-            text-align: left;
+            margin-top: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
         }
 
-        .next-step-number {
-            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+        .debug-info h4 {
+            color: #4a5568;
+            margin-bottom: 10px;
+        }
+
+        .company-info {
+            background: linear-gradient(135deg, #e6fffa 0%, #b2f5ea 100%);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 30px;
+            border-left: 4px solid #38b2ac;
+        }
+
+        .company-info h3 {
+            color: #285e61;
+            margin-bottom: 10px;
+        }
+
+        .company-info p {
+            color: #2c7a7b;
+            margin-bottom: 5px;
+        }
+
+        .refresh-btn {
+            background: linear-gradient(135deg, #5a67d8, #667eea);
             color: white;
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 12px;
-            font-weight: 600;
-            margin-bottom: 12px;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            margin-left: 15px;
         }
 
-        .next-step h4 {
-            color: #ffffff;
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 8px;
+        .refresh-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(90, 103, 216, 0.4);
         }
 
-        .next-step p {
-            color: #a1a1aa;
-            font-size: 13px;
-            line-height: 1.4;
-        }
-
-        /* Responsive Design */
         @media (max-width: 768px) {
-            .header-content {
-                flex-direction: column;
-                gap: 16px;
-                align-items: stretch;
+            .container {
+                padding: 10px;
             }
-
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .members-grid {
+                grid-template-columns: 1fr;
+            }
+            
             .stats-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .members-table {
-                font-size: 14px;
-            }
-
-            .members-table td {
-                padding: 16px;
-            }
-
-            .member-cell {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 8px;
-            }
-
-            .welcome-banner .features {
-                flex-direction: column;
-                gap: 12px;
-            }
-
-            .next-steps {
-                grid-template-columns: 1fr;
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
             }
         }
     </style>
 </head>
 <body>
-    <!-- Loading Screen -->
-    <div id="loadingScreen">
-        <div class="loading-spinner"></div>
-        <div class="loading-text">Setting up your Member Directory</div>
-        <div class="loading-subtext">Detecting your community and preparing your personalized directory...</div>
-    </div>
-
-    <!-- Main App Container -->
-    <div id="app" class="app-container" style="display: none;">
-        <!-- New Installation Welcome Banner -->
-        <div id="welcomeBanner" class="welcome-banner">
-            <h2>🎉 Welcome to Your Member Directory!</h2>
-            <p>Your personalized member directory has been created and is ready to use.</p>
-            <div class="features">
-                <div class="welcome-feature">
-                    <span>✅</span>
-                    <span>Auto-syncs with members</span>
-                </div>
-                <div class="welcome-feature">
-                    <span>🔒</span>
-                    <span>Private to your community</span>
-                </div>
-                <div class="welcome-feature">
-                    <span>⚡</span>
-                    <span>Real-time updates</span>
-                </div>
-            </div>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-users"></i> Member Directory</h1>
+            <p>Your community at a glance</p>
         </div>
 
-        <!-- Debug Panel -->
-        <div id="debugPanel" class="debug-panel">
-            <h3>🔍 Installation & Detection Debug</h3>
-            <div id="debugInfo" class="debug-info">Detecting installation context...</div>
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Loading your community directory...</p>
         </div>
 
-        <!-- Header -->
-        <header class="app-header">
-            <div class="header-content">
-                <div class="header-left">
-                    <div class="app-icon">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                            <rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="2"/>
-                            <path d="M7 8h10M7 12h10M7 16h6" stroke="currentColor" stroke-width="2"/>
-                        </svg>
-                    </div>
-                    <div class="header-title">
-                        <h1 id="appTitle">Member Directory</h1>
-                        <p id="appSubtitle">Connect with fellow community members</p>
-                    </div>
-                </div>
-                <div id="installationBadge" class="installation-badge">
-                    ✨ Just Installed
-                </div>
+        <div id="content" style="display: none;">
+            <div id="company-info" class="company-info" style="display: none;">
+                <h3 id="company-name">Loading...</h3>
+                <p><strong>Directory ID:</strong> <span id="company-id">-</span></p>
+                <p><strong>Created:</strong> <span id="directory-created">-</span></p>
+                <p><strong>Detection Method:</strong> <span id="detection-method">-</span></p>
+                <p id="company-message">-</p>
+                <button class="refresh-btn" onclick="refreshData()">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
             </div>
-        </header>
 
-        <!-- Stats Cards -->
-        <section class="stats-section">
             <div class="stats-grid">
                 <div class="stat-card">
-                    <div class="stat-icon stat-icon-primary">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="2"/>
-                            <circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2"/>
-                            <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" stroke-width="2"/>
-                        </svg>
-                    </div>
-                    <div class="stat-content">
-                        <div class="stat-value" id="totalMembers">0</div>
-                        <div class="stat-label">Total Members</div>
-                    </div>
+                    <div class="stat-number" id="total-members">0</div>
+                    <div class="stat-label">Total Members</div>
                 </div>
-                
                 <div class="stat-card">
-                    <div class="stat-icon stat-icon-success">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                            <path d="M22 12h-4l-3 9L9 3l-3 9H2" stroke="currentColor" stroke-width="2"/>
-                        </svg>
-                    </div>
-                    <div class="stat-content">
-                        <div class="stat-value" id="newThisMonth">0</div>
-                        <div class="stat-label">New This Month</div>
-                    </div>
+                    <div class="stat-number" id="new-members">0</div>
+                    <div class="stat-label">This Month</div>
                 </div>
-                
                 <div class="stat-card">
-                    <div class="stat-icon stat-icon-warning">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
-                            <path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01" stroke="currentColor" stroke-width="2"/>
-                        </svg>
-                    </div>
-                    <div class="stat-content">
-                        <div class="stat-value" id="activeMembers">0</div>
-                        <div class="stat-label">Active Members</div>
-                    </div>
+                    <div class="stat-number" id="active-members">0</div>
+                    <div class="stat-label">Active</div>
                 </div>
             </div>
-        </section>
 
-        <!-- Members Table -->
-        <section class="table-section">
-            <div class="table-container">
-                <div class="table-header">
-                    <h2>Members</h2>
-                    <div class="table-meta">
-                        <span id="memberCount">0 members</span>
-                    </div>
-                </div>
-                
-                <div class="table-wrapper">
-                    <!-- Loading State -->
-                    <div id="loadingState" class="loading-state">
-                        <div class="state-spinner"></div>
-                        <div class="state-title">Loading members...</div>
-                        <div class="state-description">Setting up your directory</div>
-                    </div>
-                    
-                    <!-- Error State -->
-                    <div id="errorState" class="error-state" style="display: none;">
-                        <div class="state-icon">
-                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
-                                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
-                                <line x1="15" y1="9" x2="9" y2="15" stroke="currentColor" stroke-width="2"/>
-                                <line x1="9" y1="9" x2="15" y2="15" stroke="currentColor" stroke-width="2"/>
-                            </svg>
-                        </div>
-                        <div class="state-title">Unable to load members</div>
-                        <div class="state-description" id="errorMessage">Please try again later</div>
-                        <div id="errorDetails" style="margin-top: 12px; font-size: 12px; opacity: 0.7;"></div>
-                    </div>
-                    
-                    <!-- New Installation State -->
-                    <div id="newInstallationState" class="new-installation-state" style="display: none;">
-                        <div class="state-icon">🎉</div>
-                        <div class="state-title">Your Member Directory is Ready!</div>
-                        <div class="state-description">
-                            This is your brand new member directory. As members join your community, they'll automatically appear here.
-                        </div>
-                        
-                        <div class="next-steps">
-                            <div class="next-step">
-                                <div class="next-step-number">1</div>
-                                <h4>Invite Members</h4>
-                                <p>Share your Whop community link to start building your member base</p>
-                            </div>
-                            <div class="next-step">
-                                <div class="next-step-number">2</div>
-                                <h4>Auto-Sync</h4>
-                                <p>New members will automatically appear in this directory when they join</p>
-                            </div>
-                            <div class="next-step">
-                                <div class="next-step-number">3</div>
-                                <h4>Stay Connected</h4>
-                                <p>Members can find and connect with each other using this directory</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Empty State -->
-                    <div id="emptyState" class="empty-state" style="display: none;">
-                        <div class="state-icon">
-                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
-                                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
-                                <path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01" stroke="currentColor" stroke-width="2"/>
-                            </svg>
-                        </div>
-                        <div class="state-title">No members yet</div>
-                        <div class="state-description">Members will appear here as they join your community</div>
-                    </div>
-
-                    <!-- Members Table -->
-                    <table id="membersTable" class="members-table" style="display: none;">
-                        <thead>
-                            <tr>
-                                <th>Member</th>
-                                <th>Custom Fields</th>
-                                <th>Joined</th>
-                            </tr>
-                        </thead>
-                        <tbody id="membersTableBody">
-                        </tbody>
-                    </table>
+            <div class="members-section">
+                <input type="text" class="search-bar" id="search" placeholder="Search members by name or email...">
+                <div id="members-container">
+                    <!-- Members will be loaded here -->
                 </div>
             </div>
-        </section>
+
+            <div id="debug-info" class="debug-info" style="display: none;">
+                <h4>🔧 Debug Information</h4>
+                <pre id="debug-content"></pre>
+            </div>
+        </div>
     </div>
 
     <script>
-        class AppStoreReadyWhopDirectory {
-            constructor() {
-                this.members = [];
-                this.companyId = null;
-                this.isNewInstallation = false;
-                this.debugMode = this.isDebugMode();
-                this.error = null;
-                this.detectionMethods = [];
-                
-                this.init();
-            }
+        let allMembers = [];
+        let currentCompanyId = null;
+        let lastResponseData = null;
 
-            isDebugMode() {
-                return window.location.search.includes('debug=true') || 
-                       window.location.hash.includes('debug');
-            }
-
-            async init() {
-                try {
-                    console.log('🚀 Initializing App Store Ready Whop Directory...');
-                    
-                    if (this.debugMode) {
-                        document.getElementById('debugPanel').classList.add('visible');
-                    }
-                    
-                    this.detectCompanyId();
-                    await this.loadMembers();
-                    this.hideLoadingScreen();
-                    
-                } catch (error) {
-                    console.error('❌ Initialization error:', error);
-                    this.showError(`Initialization failed: ${error.message}`);
-                    this.hideLoadingScreen();
-                }
-            }
-
-            hideLoadingScreen() {
-                const loadingScreen = document.getElementById('loadingScreen');
-                const app = document.getElementById('app');
-                
-                if (loadingScreen) {
-                    loadingScreen.style.opacity = '0';
-                    setTimeout(() => {
-                        loadingScreen.style.display = 'none';
-                        app.style.display = 'block';
-                    }, 300);
-                }
-            }
-
-            detectCompanyId() {
-                console.log('🔍 App Store auto-detection starting...');
-                this.detectionMethods = [];
-                
-                const methods = [
-                    { name: 'URL Parameters', fn: () => this.getCompanyFromURL() },
-                    { name: 'Whop Headers', fn: () => this.getCompanyFromHeaders() },
-                    { name: 'Whop Referrer', fn: () => this.getCompanyFromReferer() },
-                    { name: 'Parent Window Context', fn: () => this.getCompanyFromParent() },
-                    { name: 'PostMessage API', fn: () => this.setupPostMessageListener() }
-                ];
-
-                for (const method of methods) {
-                    try {
-                        const id = method.fn();
-                        this.detectionMethods.push({
-                            method: method.name,
-                            result: id || 'not found',
-                            success: !!id
-                        });
-                        
-                        if (id && !this.companyId) {
-                            this.companyId = id;
-                            console.log(`✅ Company ID detected via ${method.name}: ${id}`);
-                        }
-                    } catch (error) {
-                        this.detectionMethods.push({
-                            method: method.name,
-                            result: `error: ${error.message}`,
-                            success: false
-                        });
-                        console.warn(`Detection method ${method.name} failed:`, error);
-                    }
-                }
-
-                this.updateDetectionInfo();
-                
-                if (!this.companyId) {
-                    console.log('ℹ️ No company ID detected locally, will use server auto-detection');
-                }
-            }
-
-            getCompanyFromURL() {
-                const params = new URLSearchParams(window.location.search);
-                return params.get('company') || params.get('company_id') || params.get('page_id');
-            }
-
-            getCompanyFromHeaders() {
-                // Try to access headers that might be set by Whop
-                const meta = document.querySelector('meta[name="whop-company-id"]');
-                if (meta) return meta.getAttribute('content');
-                
-                const dataCompany = document.documentElement.getAttribute('data-whop-company');
-                if (dataCompany) return dataCompany;
-                
-                return null;
-            }
-
-            getCompanyFromReferer() {
-                const referer = document.referrer;
-                console.log(`🔍 Analyzing referrer: ${referer}`);
-                
-                if (!referer) return null;
-
-                // Enhanced Whop URL patterns for app store
-                const patterns = [
-                    { name: 'App Store Install', regex: /\/apps\/([^\/\?]+)/ },
-                    { name: 'Company Apps', regex: /\/([^\/]+)\/apps\/[^\/]+/ },
-                    { name: 'biz_ pattern', regex: /\/(biz_[a-zA-Z0-9]+)/ },
-                    { name: 'Company Dashboard', regex: /\/([^\/]+)\/dashboard/ },
-                    { name: 'Company Members', regex: /\/([^\/]+)\/members/ },
-                    { name: 'Whop.com username', regex: /whop\.com\/([^\/]+)\/[^\/]+/ },
-                    { name: 'Whop.com direct', regex: /whop\.com\/([^\/\?]+)/ },
-                    { name: 'Company parameter', regex: /[?&]company=([^&]+)/ },
-                    { name: 'Page ID parameter', regex: /[?&]page_id=([^&]+)/ },
-                    { name: 'Subdomain', regex: /^https?:\/\/([^\.]+)\.whop\.com/ }
-                ];
-
-                for (const pattern of patterns) {
-                    const match = referer.match(pattern.regex);
-                    if (match && match[1] && match[1] !== 'www' && match[1] !== 'app' && match[1] !== 'apps') {
-                        console.log(`🎯 Extracted via ${pattern.name}: ${match[1]}`);
-                        return match[1];
-                    }
-                }
-
-                return null;
-            }
-
-            getCompanyFromParent() {
-                try {
-                    if (window !== window.parent) {
-                        const parentUrl = document.referrer;
-                        if (parentUrl) {
-                            return this.extractCompanyFromUrl(parentUrl);
-                        }
-                    }
-                } catch (error) {
-                    console.log('Parent access restricted (normal for production)');
-                }
-                return null;
-            }
-
-            setupPostMessageListener() {
-                window.addEventListener('message', (event) => {
-                    console.log('📨 Received postMessage:', event.data);
-                    
-                    if (event.data && event.data.type === 'whop-context' && event.data.companyId) {
-                        console.log(`📨 Company ID from postMessage: ${event.data.companyId}`);
-                        this.companyId = event.data.companyId;
-                        this.updateDetectionInfo(`PostMessage: ${event.data.companyId}`);
-                        this.loadMembers();
-                    }
-                });
-
-                if (window !== window.parent) {
-                    try {
-                        window.parent.postMessage({ 
-                            type: 'request-whop-context',
-                            origin: window.location.origin 
-                        }, '*');
-                        console.log('📤 Requested context from parent window');
-                    } catch (error) {
-                        console.log('Could not request context from parent');
-                    }
-                }
-
-                return null;
-            }
-
-            extractCompanyFromUrl(url) {
-                if (!url) return null;
-
-                const patterns = [
-                    /\/(biz_[a-zA-Z0-9]+)/,
-                    /\/company\/([^\/\?]+)/,
-                    /\/business\/([^\/\?]+)/,
-                    /whop\.com\/([^\/]+)\/[^\/]+/,
-                    /whop\.com\/([^\/\?]+)/,
-                    /[?&]company=([^&]+)/,
-                    /[?&]page_id=([^&]+)/,
-                    /^https?:\/\/([^\.]+)\.whop\.com/
-                ];
-
-                for (const pattern of patterns) {
-                    const match = url.match(pattern);
-                    if (match && match[1] && match[1] !== 'www' && match[1] !== 'app') {
-                        return match[1];
-                    }
-                }
-
-                return null;
-            }
-
-            updateDetectionInfo(info) {
-                if (this.debugMode) {
-                    const debugInfo = document.getElementById('debugInfo');
-                    if (debugInfo) {
-                        const methodsInfo = this.detectionMethods.map(m => 
-                            `${m.method}: ${m.result} ${m.success ? '✅' : '❌'}`
-                        ).join('<br>');
-                        
-                        debugInfo.innerHTML = `
-                            <strong>App Store Detection Results:</strong><br>
-                            ${methodsInfo}<br><br>
-                            <strong>Final Company ID:</strong> ${this.companyId || 'none detected'}<br>
-                            <strong>Installation Status:</strong> ${this.isNewInstallation ? 'NEW' : 'EXISTING'}<br>
-                            <strong>URL:</strong> ${window.location.href}<br>
-                            <strong>Referrer:</strong> ${document.referrer || 'none'}<br>
-                            <strong>Context:</strong> ${window !== window.parent ? 'embedded (iframe)' : 'standalone'}<br>
-                            ${info ? `<br><strong>Latest:</strong> ${info}` : ''}
-                        `;
-                    }
-                }
-            }
-
-            async loadMembers() {
-                try {
-                    console.log('📡 Loading members from App Store Ready API...');
-                    this.updateDetectionInfo('Loading members...');
-                    
-                    const endpoint = this.companyId ? 
-                        `/api/members/${this.companyId}` : 
-                        '/api/members/auto';
-                    
-                    const headers = {
-                        'Content-Type': 'application/json'
-                    };
-
-                    if (this.companyId) {
-                        headers['x-whop-company-id'] = this.companyId;
-                        headers['x-company-id'] = this.companyId;
-                        headers['x-page-id'] = this.companyId;
-                    }
-
-                    console.log(`📡 Fetching from: ${endpoint}`);
-
-                    const response = await fetch(endpoint, { headers });
-                    
-                    if (!response.ok) {
-                        const errorData = await response.json().catch(() => ({}));
-                        throw new Error(errorData.error || `HTTP ${response.status}`);
-                    }
-
-                    const data = await response.json();
-                    
-                    if (data.success) {
-                        this.members = data.members || [];
-                        this.companyId = data.company_id;
-                        this.isNewInstallation = data.is_new_installation || false;
-                        
-                        console.log(`✅ Loaded ${this.members.length} members for ${data.company_id} (${this.isNewInstallation ? 'NEW' : 'EXISTING'} installation)`);
-                        
-                        this.updateUI(data);
-                        this.showMembers();
-                        this.updateDetectionInfo(`✅ Success: ${data.company_id} (${this.members.length} members, ${this.isNewInstallation ? 'NEW' : 'EXISTING'})`);
-                        
-                        // Show installation welcome if this is a new installation
-                        if (this.isNewInstallation) {
-                            this.showInstallationWelcome();
-                        }
-                    } else {
-                        throw new Error(data.error || 'Failed to load members');
-                    }
-                    
-                } catch (error) {
-                    console.error('❌ Error loading members:', error);
-                    this.error = error.message;
-                    this.showError(error.message);
-                    this.updateDetectionInfo(`❌ Error: ${error.message}`);
-                }
-            }
-
-            showInstallationWelcome() {
-                console.log('🎉 Showing new installation welcome');
-                
-                // Show welcome banner
-                const welcomeBanner = document.getElementById('welcomeBanner');
-                if (welcomeBanner) {
-                    welcomeBanner.classList.add('visible');
-                    
-                    // Auto-hide after 10 seconds
-                    setTimeout(() => {
-                        welcomeBanner.classList.remove('visible');
-                    }, 10000);
-                }
-                
-                // Show installation badge
-                const installationBadge = document.getElementById('installationBadge');
-                if (installationBadge) {
-                    installationBadge.classList.add('visible');
-                    
-                    // Auto-hide after 30 seconds
-                    setTimeout(() => {
-                        installationBadge.classList.remove('visible');
-                    }, 30000);
-                }
-            }
-
-            updateUI(data) {
-                // Update header
-                const title = document.getElementById('appTitle');
-                const subtitle = document.getElementById('appSubtitle');
-                
-                if (title) {
-                    title.textContent = data.company_name ? 
-                        `${data.company_name}` : 
-                        'Member Directory';
-                }
-                
-                if (subtitle) {
-                    const installationText = this.isNewInstallation ? ' • Just Installed' : '';
-                    subtitle.textContent = `Connect with fellow community members • ${data.company_id}${installationText}`;
-                }
-
-                // Update stats
-                this.updateStats();
-                
-                // Update page title
-                document.title = `Member Directory - ${data.company_name || data.company_id}`;
-            }
-
-            updateStats() {
-                const totalMembers = this.members.length;
-                const now = new Date();
-                const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
-                
-                const newThisMonth = this.members.filter(member => 
-                    new Date(member.joined_at) > thirtyDaysAgo
-                ).length;
-                
-                const activeMembers = this.members.filter(member => 
-                    member.status === 'active'
-                ).length;
-
-                document.getElementById('totalMembers').textContent = totalMembers;
-                document.getElementById('newThisMonth').textContent = newThisMonth;
-                document.getElementById('activeMembers').textContent = activeMembers;
-                document.getElementById('memberCount').textContent = 
-                    `${totalMembers} member${totalMembers !== 1 ? 's' : ''}`;
-            }
-
-            showMembers() {
-                if (this.members.length === 0) {
-                    if (this.isNewInstallation) {
-                        this.showNewInstallationState();
-                    } else {
-                        this.showEmpty();
-                    }
-                    return;
-                }
-
-                const tableBody = document.getElementById('membersTableBody');
-                const table = document.getElementById('membersTable');
-                
-                tableBody.innerHTML = this.members.map(member => this.createMemberRow(member)).join('');
-                
-                table.style.display = 'table';
-                this.hideOtherStates('table');
-            }
-
-            showNewInstallationState() {
-                document.getElementById('newInstallationState').style.display = 'block';
-                this.hideOtherStates('new-installation');
-            }
-
-            createMemberRow(member) {
-                const name = member.name || member.username || 'Anonymous';
-                const email = member.email || 'No email provided';
-                const initials = name.slice(0, 2).toUpperCase();
-                const joinedDate = new Date(member.joined_at).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric'
-                });
-
-                const customFields = this.formatCustomFields(member.custom_fields || {});
-
-                return `
-                    <tr>
-                        <td>
-                            <div class="member-cell">
-                                <div class="member-avatar">${initials}</div>
-                                <div class="member-info">
-                                    <div class="member-name">${this.escapeHtml(name)}</div>
-                                    <div class="member-email">${this.escapeHtml(email)}</div>
-                                </div>
-                            </div>
-                        </td>
-                        <td>
-                            <div class="custom-fields">
-                                ${customFields}
-                            </div>
-                        </td>
-                        <td>
-                            <div class="date-cell">${joinedDate}</div>
-                        </td>
-                    </tr>
-                `;
-            }
-
-            formatCustomFields(fields) {
-                if (!fields || typeof fields !== 'object') {
-                    return '<div class="no-fields">No custom fields</div>';
-                }
-
-                const entries = Object.entries(fields).filter(([key, value]) => 
-                    value && !['status', 'error', 'note'].includes(key)
-                );
-
-                if (entries.length === 0) {
-                    return '<div class="no-fields">No custom fields</div>';
-                }
-
-                return entries.map(([key, value]) => {
-                    const label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                    return `
-                        <div class="field-item">
-                            <div class="field-label">${label}</div>
-                            <div class="field-value">${this.escapeHtml(String(value))}</div>
-                        </div>
-                    `;
-                }).join('');
-            }
-
-            escapeHtml(text) {
-                const div = document.createElement('div');
-                div.textContent = text;
-                return div.innerHTML;
-            }
-
-            showError(message) {
-                const errorState = document.getElementById('errorState');
-                const errorMessage = document.getElementById('errorMessage');
-                const errorDetails = document.getElementById('errorDetails');
-                
-                errorMessage.textContent = message;
-                errorDetails.innerHTML = this.debugMode ? `
-                    <strong>Debug Info:</strong><br>
-                    Detected Company: ${this.companyId || 'none'}<br>
-                    Installation Status: ${this.isNewInstallation ? 'NEW' : 'EXISTING'}<br>
-                    URL: ${window.location.href}<br>
-                    Referrer: ${document.referrer || 'none'}<br>
-                    Detection Methods: ${this.detectionMethods.filter(m => m.success).length}/${this.detectionMethods.length} successful
-                ` : '';
-                
-                errorState.style.display = 'flex';
-                this.hideOtherStates('error');
-            }
-
-            showEmpty() {
-                document.getElementById('emptyState').style.display = 'flex';
-                this.hideOtherStates('empty');
-            }
-
-            hideOtherStates(except) {
-                const states = {
-                    'loading': document.getElementById('loadingState'),
-                    'table': document.getElementById('membersTable'),
-                    'error': document.getElementById('errorState'),
-                    'empty': document.getElementById('emptyState'),
-                    'new-installation': document.getElementById('newInstallationState')
-                };
-
-                Object.keys(states).forEach(state => {
-                    if (state !== except && states[state]) {
-                        states[state].style.display = 'none';
-                    }
-                });
-            }
-        }
-
-        // Initialize when DOM is ready
-        document.addEventListener('DOMContentLoaded', () => {
-            window.memberDirectory = new AppStoreReadyWhopDirectory();
+        // Initialize the app
+        document.addEventListener('DOMContentLoaded', function() {
+            loadMembers();
+            
+            // Setup search functionality
+            document.getElementById('search').addEventListener('input', function(e) {
+                filterMembers(e.target.value);
+            });
         });
 
-        // If DOM is already loaded, initialize immediately
-        if (document.readyState === 'loading') {
-            // Wait for DOMContentLoaded
-        } else {
-            window.memberDirectory = new AppStoreReadyWhopDirectory();
+        async function loadMembers() {
+            try {
+                console.log('🚀 Loading members with auto-detection...');
+                showLoading();
+                
+                // Always start with auto-detection
+                const response = await fetch('/api/members/auto', {
+                    method: 'GET',
+                    headers: {
+                        'Cache-Control': 'no-cache'
+                    }
+                });
+                
+                const data = await response.json();
+                lastResponseData = data;
+                
+                console.log('📡 API Response:', data);
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to load members');
+                }
+
+                // Update current company ID if detected
+                if (data.company_id && data.company_id !== 'auto') {
+                    currentCompanyId = data.company_id;
+                    console.log(`✅ Company ID updated to: ${currentCompanyId}`);
+                }
+
+                allMembers = data.members || [];
+                
+                // Update UI
+                updateCompanyInfo(data);
+                updateStats(data);
+                displayMembers(allMembers);
+                hideLoading();
+                
+                // Show debug info if needed
+                if (data.debug_info || data.detection_method) {
+                    updateDebugInfo(data);
+                }
+                
+                console.log(`✅ Loaded ${allMembers.length} members for company: ${currentCompanyId}`);
+                
+            } catch (error) {
+                console.error('❌ Error loading members:', error);
+                hideLoading();
+                showError(error.message);
+            }
         }
+
+        function updateCompanyInfo(data) {
+            if (data.company_id && data.company_id !== 'auto') {
+                document.getElementById('company-info').style.display = 'block';
+                document.getElementById('company-name').textContent = data.company_name || data.company_id;
+                document.getElementById('company-id').textContent = data.company_id;
+                document.getElementById('detection-method').textContent = data.detection_method || 'auto-detect';
+                document.getElementById('company-message').textContent = data.message || 'Directory loaded successfully';
+                
+                if (data.directory_created) {
+                    const date = new Date(data.directory_created).toLocaleDateString();
+                    document.getElementById('directory-created').textContent = date;
+                } else {
+                    document.getElementById('directory-created').textContent = 'Recently';
+                }
+                
+                // Show special message for new installations
+                if (data.is_new_installation) {
+                    document.getElementById('company-message').innerHTML = 
+                        '🎉 <strong>Welcome!</strong> Your member directory has been created. Members will appear here as they join your community.';
+                }
+            }
+        }
+
+        function updateStats(data) {
+            const totalMembers = data.count || 0;
+            const thisMonth = allMembers.filter(member => {
+                const joinDate = new Date(member.joined_at);
+                const now = new Date();
+                return joinDate.getMonth() === now.getMonth() && 
+                       joinDate.getFullYear() === now.getFullYear();
+            }).length;
+            
+            const activeMembers = allMembers.filter(member => 
+                member.status === 'active' || !member.status
+            ).length;
+
+            document.getElementById('total-members').textContent = totalMembers;
+            document.getElementById('new-members').textContent = thisMonth;
+            document.getElementById('active-members').textContent = activeMembers;
+        }
+
+        function displayMembers(members) {
+            const container = document.getElementById('members-container');
+            
+            if (members.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-users"></i>
+                        <h3>No members yet</h3>
+                        <p>Members will appear here as they join your community.<br>
+                        The directory updates automatically when new members join through Whop.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const membersHTML = members.map(member => {
+                const name = member.name || member.username || 'Anonymous';
+                const email = member.email || 'No email provided';
+                const joinDate = new Date(member.joined_at).toLocaleDateString();
+                const avatar = name.charAt(0).toUpperCase();
+                
+                // Display custom fields if available
+                let customFieldsHTML = '';
+                if (member.custom_fields && Object.keys(member.custom_fields).length > 0) {
+                    customFieldsHTML = '<div style="margin-top: 10px; font-size: 0.8rem; color: #666;">';
+                    Object.entries(member.custom_fields).forEach(([key, value]) => {
+                        if (value && value !== '') {
+                            customFieldsHTML += `<div><strong>${key}:</strong> ${value}</div>`;
+                        }
+                    });
+                    customFieldsHTML += '</div>';
+                }
+
+                return `
+                    <div class="member-card">
+                        <div class="member-avatar">${avatar}</div>
+                        <div class="member-name">${name}</div>
+                        <div class="member-email">${email}</div>
+                        <div class="member-date">Joined: ${joinDate}</div>
+                        ${customFieldsHTML}
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = `<div class="members-grid">${membersHTML}</div>`;
+        }
+
+        function filterMembers(searchTerm) {
+            const filtered = allMembers.filter(member => {
+                const name = (member.name || '').toLowerCase();
+                const email = (member.email || '').toLowerCase();
+                const username = (member.username || '').toLowerCase();
+                const search = searchTerm.toLowerCase();
+                
+                return name.includes(search) || 
+                       email.includes(search) || 
+                       username.includes(search);
+            });
+            
+            displayMembers(filtered);
+        }
+
+        function showLoading() {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('content').style.display = 'none';
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('content').style.display = 'block';
+        }
+
+        function showError(message) {
+            document.getElementById('content').style.display = 'block';
+            document.getElementById('members-container').innerHTML = `
+                <div class="error">
+                    <h4>⚠️ Error Loading Directory</h4>
+                    <p>${message}</p>
+                    <button class="refresh-btn" onclick="refreshData()" style="margin-top: 10px;">
+                        <i class="fas fa-retry"></i> Try Again
+                    </button>
+                </div>
+            `;
+        }
+
+        function updateDebugInfo(data) {
+            const debugInfo = {
+                company_id: data.company_id,
+                detection_method: data.detection_method,
+                detected_from: data.detected_from,
+                is_new_installation: data.is_new_installation,
+                directory_created: data.directory_created,
+                member_count: data.count,
+                debug_info: data.debug_info,
+                timestamp: data.timestamp
+            };
+            
+            document.getElementById('debug-content').textContent = JSON.stringify(debugInfo, null, 2);
+            
+            // Show debug info if we have useful debugging data
+            if (data.debug_info || data.is_new_installation) {
+                document.getElementById('debug-info').style.display = 'block';
+            }
+        }
+
+        async function refreshData() {
+            console.log('🔄 Refreshing data...');
+            await loadMembers();
+        }
+
+        // Auto-refresh every 5 minutes
+        setInterval(refreshData, 5 * 60 * 1000);
     </script>
 </body>
 </html>
