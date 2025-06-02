@@ -67,8 +67,6 @@ pool.connect()
           id SERIAL PRIMARY KEY,
           company_id VARCHAR(255) UNIQUE NOT NULL,
           company_name VARCHAR(255),
-          username VARCHAR(255),
-          product_id VARCHAR(255),
           installed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           last_activity TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           webhook_secret VARCHAR(500),
@@ -77,7 +75,6 @@ pool.connect()
         );
         
         CREATE INDEX IF NOT EXISTS idx_whop_companies_company_id ON whop_companies(company_id);
-        CREATE INDEX IF NOT EXISTS idx_whop_companies_username ON whop_companies(username);
       `);
       
       // Create or update members table
@@ -380,7 +377,7 @@ app.get('/api/members/:companyId?', async (req, res) => {
       SELECT 
         m.id, m.user_id, m.membership_id, m.email, m.name, m.username, 
         m.custom_fields, m.joined_at, m.status, m.updated_at,
-        c.company_name, c.username as company_username
+        c.company_name
       FROM whop_members m
       LEFT JOIN whop_companies c ON m.company_id = c.company_id
       WHERE m.company_id = $1
@@ -429,13 +426,12 @@ async function getAvailableCompanies() {
       SELECT 
         company_id,
         company_name,
-        username,
         COUNT(m.id) as member_count,
         MAX(c.last_activity) as latest_activity
       FROM whop_companies c
       LEFT JOIN whop_members m ON c.company_id = m.company_id
       WHERE c.status = 'active'
-      GROUP BY c.company_id, c.company_name, c.username
+      GROUP BY c.company_id, c.company_name
       ORDER BY member_count DESC, latest_activity DESC
       LIMIT 10
     `);
@@ -518,31 +514,21 @@ async function handleAppInstallation(companyId, data) {
   try {
     // Extract additional info from installation data
     const companyName = data.company_name || data.business_name || companyId;
-    const username = data.username || extractUsernameFromCompanyId(companyId);
     
     await pool.query(`
-      INSERT INTO whop_companies (company_id, company_name, username, installed_at) 
-      VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+      INSERT INTO whop_companies (company_id, company_name, installed_at) 
+      VALUES ($1, $2, CURRENT_TIMESTAMP)
       ON CONFLICT (company_id) 
       DO UPDATE SET 
         company_name = EXCLUDED.company_name,
-        username = EXCLUDED.username,
         last_activity = CURRENT_TIMESTAMP,
         status = 'active'
-    `, [companyId, companyName, username]);
+    `, [companyId, companyName]);
     
     console.log(`✅ Company ${companyId} registered successfully`);
   } catch (error) {
     console.error('❌ Error registering company:', error);
   }
-}
-
-function extractUsernameFromCompanyId(companyId) {
-  // If company ID starts with biz_, we can't extract username directly
-  if (companyId.startsWith('biz_')) {
-    return null;
-  }
-  return companyId;
 }
 
 // Handle valid membership
