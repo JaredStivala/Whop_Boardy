@@ -763,20 +763,38 @@ class MemberDirectory {
         this.setLoading(true);
         
         try {
+            console.log('🔍 Loading members from API...');
             const response = await fetch('/api/members/biz_6GuEa8lMu5p9yl');
+            
+            console.log('📡 Response status:', response.status);
+            console.log('📡 Response headers:', response.headers.get('content-type'));
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const text = await response.text();
+                console.error('❌ Expected JSON but got:', text.substring(0, 200));
+                throw new Error('Server returned HTML instead of JSON - check server logs');
+            }
+            
             const data = await response.json();
+            console.log('✅ API Response:', data);
             
             if (data.success) {
-                this.members = data.members;
+                this.members = data.members || [];
+                console.log(`📊 Loaded ${this.members.length} members`);
                 this.filterAndRenderMembers();
                 this.updateStats();
             } else {
                 console.error('Failed to load members:', data.error);
-                this.showError('Failed to load members');
+                this.showError(`Failed to load members: ${data.error || 'Unknown error'}`);
             }
         } catch (error) {
-            console.error('Error loading members:', error);
-            this.showError('Error loading members');
+            console.error('❌ Error loading members:', error);
+            this.showError(`Error loading members: ${error.message}`);
         } finally {
             this.setLoading(false);
         }
@@ -798,15 +816,73 @@ class MemberDirectory {
 
     showError(message) {
         const tableBody = document.getElementById('membersTableBody');
+        const emptyState = document.getElementById('emptyState');
+        
+        tableBody.style.display = 'table-row-group';
+        emptyState.style.display = 'none';
+        
         tableBody.innerHTML = `
             <tr>
                 <td colspan="3" class="error-cell">
-                    <div style="text-align: center; padding: 40px; color: #ef4444;">
-                        <p>${this.escapeHtml(message)}</p>
+                    <div style="text-align: center; padding: 40px;">
+                        <div style="color: #ef4444; font-size: 18px; margin-bottom: 12px;">⚠️ ${this.escapeHtml(message)}</div>
+                        <div style="color: #71717a; font-size: 14px; margin-bottom: 20px;">
+                            Check the browser console for more details
+                        </div>
+                        <button onclick="memberDirectory.testConnection()" class="btn-secondary" style="margin-right: 12px;">
+                            Test API Connection
+                        </button>
+                        <button onclick="memberDirectory.loadMembers()" class="btn-secondary">
+                            Retry
+                        </button>
                     </div>
                 </td>
             </tr>
         `;
+    }
+
+    async testConnection() {
+        console.log('🧪 Testing API connection...');
+        
+        try {
+            // Test basic API endpoint
+            const response = await fetch('/api/test');
+            console.log('📡 Basic API test response:', response.status);
+            
+            if (response.ok) {
+                const data = await response.text();
+                console.log('✅ Basic API working:', data);
+                
+                // Test members endpoint specifically
+                console.log('🔍 Testing members endpoint...');
+                const membersResponse = await fetch('/api/members/biz_6GuEa8lMu5p9yl');
+                console.log('📡 Members API response:', membersResponse.status, membersResponse.statusText);
+                
+                const responseText = await membersResponse.text();
+                console.log('📄 Raw response:', responseText.substring(0, 500));
+                
+                if (responseText.startsWith('<')) {
+                    console.error('❌ Server is returning HTML instead of JSON');
+                    alert('❌ Server error: The API is returning HTML instead of JSON. Check server logs for details.');
+                } else {
+                    console.log('✅ Response looks like JSON');
+                    try {
+                        const data = JSON.parse(responseText);
+                        console.log('✅ Valid JSON response:', data);
+                        alert('✅ API connection successful! Try refreshing the page.');
+                    } catch (e) {
+                        console.error('❌ Invalid JSON:', e);
+                        alert('❌ API returned invalid JSON');
+                    }
+                }
+            } else {
+                console.error('❌ Basic API test failed:', response.status);
+                alert(`❌ API connection failed: ${response.status} ${response.statusText}`);
+            }
+        } catch (error) {
+            console.error('❌ Connection test failed:', error);
+            alert(`❌ Connection test failed: ${error.message}`);
+        }
     }
 
     filterAndRenderMembers() {
@@ -1008,5 +1084,5 @@ class MemberDirectory {
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', () => {
-    new MemberDirectory();
+    window.memberDirectory = new MemberDirectory();
 });
