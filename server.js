@@ -450,8 +450,6 @@ async function handleMembershipInvalid(data) {
 
 // Replace the /api/directory/:companyId route in server.js with this:
 
-// Replace the /api/directory/:companyId route in server.js with this:
-
 app.get('/api/directory/:companyId', async (req, res) => {
     try {
       // Pre-flight DB check
