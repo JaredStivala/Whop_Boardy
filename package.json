@@ -18,7 +18,7 @@
     "auto-detection",
     "whop-app"
   ],
-  "author": "Your Name",
+  "author": "Jared Stivala",
   "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",
@@ -29,10 +29,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "your-repo-url"
+    "url": "https://github.com/JaredStivala/Whop_Boardy"
   },
   "bugs": {
-    "url": "your-repo-url/issues"
+    "url": "https://github.com/JaredStivala/Whop_Boardy/issues"
   },
-  "homepage": "your-repo-url#readme"
+  "homepage": "https://github.com/JaredStivala/Whop_Boardy#readme"
 }
