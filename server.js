@@ -890,6 +890,7 @@ app.use('/api/*', (req, res) => {
       'GET /api/members/auto',
       'GET /api/companies',
       'GET /api/directory/check/:companyId',
+      'GET /api/debug/company (for debugging company ID extraction)',
       'POST /webhook/whop',
       'POST /webhook/test (for testing member addition)'
     ]
