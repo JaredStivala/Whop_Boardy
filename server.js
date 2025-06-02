@@ -240,6 +240,7 @@ app.post('/webhook/whop', async (req, res) => {
   }
 });
 
+
 // Replace the handleMembershipValid function in server.js with this enhanced version:
 
 async function handleMembershipValid(data) {
@@ -280,6 +281,31 @@ async function handleMembershipValid(data) {
         console.error('❌ Error fetching user data from Whop API:', fetchError);
       }
   
+      // --- Fetch Membership Details from Whop API (for custom fields) ---
+      let whopMembershipData = null;
+      try {
+        console.log(`🔍 Fetching membership details for ${membershipId} from Whop API...`);
+        
+        const membershipResponse = await fetch(`https://api.whop.com/api/v2/memberships/${membershipId}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${process.env.WHOP_API_KEY}`,
+            'Content-Type': 'application/json'
+          }
+        });
+  
+        if (membershipResponse.ok) {
+          whopMembershipData = await membershipResponse.json();
+          console.log('🎫 Membership data from Whop API:', JSON.stringify(whopMembershipData, null, 2));
+        } else {
+          console.error(`❌ Failed to fetch membership data: ${membershipResponse.status} - ${membershipResponse.statusText}`);
+          const errorText = await membershipResponse.text();
+          console.error('Error response:', errorText);
+        }
+      } catch (fetchError) {
+        console.error('❌ Error fetching membership data from Whop API:', fetchError);
+      }
+  
       // --- Extract User Information ---
       // Priority: Whop API data > webhook data > fallback
       const userName = whopUserData?.name || 
@@ -309,8 +335,30 @@ async function handleMembershipValid(data) {
       // --- Extract Custom Fields / Waitlist Responses ---
       let customFields = {};
       
-      // Check webhook data for custom fields
-      const potentialSources = [
+      console.log('🔍 Searching for custom fields in all data sources...');
+      
+      // Priority 1: Membership API data (most complete)
+      if (whopMembershipData) {
+        console.log('🎯 Processing membership API custom fields...');
+        
+        if (whopMembershipData.custom_fields_responses) {
+          console.log('📋 Found custom_fields_responses:', JSON.stringify(whopMembershipData.custom_fields_responses, null, 2));
+          customFields = { ...customFields, ...whopMembershipData.custom_fields_responses };
+        }
+        
+        if (whopMembershipData.custom_fields_responses_v2) {
+          console.log('📋 Found custom_fields_responses_v2:', JSON.stringify(whopMembershipData.custom_fields_responses_v2, null, 2));
+          customFields = { ...customFields, ...whopMembershipData.custom_fields_responses_v2 };
+        }
+        
+        if (whopMembershipData.metadata) {
+          console.log('📋 Found membership metadata:', JSON.stringify(whopMembershipData.metadata, null, 2));
+          customFields = { ...customFields, ...whopMembershipData.metadata };
+        }
+      }
+      
+      // Priority 2: Webhook data (fallback)
+      const webhookSources = [
         { key: 'data.custom_field_responses', data: data.custom_field_responses },
         { key: 'data.custom_fields', data: data.custom_fields },
         { key: 'data.waitlist_responses', data: data.waitlist_responses },
@@ -319,14 +367,28 @@ async function handleMembershipValid(data) {
         { key: 'data.metadata', data: data.metadata }
       ];
   
-      potentialSources.forEach(source => {
-        if (source.data && typeof source.data === 'object' && !Array.isArray(source.data)) {
-          console.log(`🔍 Found custom field data in ${source.key}:`, JSON.stringify(source.data, null, 2));
-          customFields = { ...customFields, ...source.data };
+      // Process webhook sources
+      webhookSources.forEach(source => {
+        if (source.data) {
+          console.log(`🔍 Checking webhook ${source.key}:`, JSON.stringify(source.data, null, 2));
+          
+          if (typeof source.data === 'object' && !Array.isArray(source.data)) {
+            customFields = { ...customFields, ...source.data };
+          } else if (typeof source.data === 'string' && source.data.length > 0) {
+            try {
+              const parsed = JSON.parse(source.data);
+              if (typeof parsed === 'object') {
+                customFields = { ...customFields, ...parsed };
+              }
+            } catch (e) {
+              // Store as string if not parseable
+              customFields[source.key.split('.')[1]] = source.data;
+            }
+          }
         }
       });
   
-      console.log('📋 Final custom fields:', JSON.stringify(customFields, null, 2));
+      console.log('📋 Final combined custom fields:', JSON.stringify(customFields, null, 2));
   
       // --- Store Member in Database ---
       await pool.query(`
@@ -370,7 +432,6 @@ async function handleMembershipValid(data) {
       console.error('❌ Error handling membership valid:', error);
     }
   }
-
 // Handle membership becoming invalid
 async function handleMembershipInvalid(data) {
   try {
@@ -423,17 +484,33 @@ app.get('/api/directory/:companyId', async (req, res) => {
     
       res.json({
         success: true,
-        members: result.rows.map(member => ({
-          id: member.id,
-          user_id: member.user_id,
-          membership_id: member.membership_id,
-          email: member.email,
-          name: member.name, // Include name in response
-          username: member.username, // Include username in response
-          waitlist_responses: member.custom_fields || {},
-          joined_at: member.joined_at,
-          status: member.status
-        })),
+        members: result.rows.map(member => {
+          // Parse custom_fields if it's a JSON string
+          let parsedCustomFields = {};
+          if (member.custom_fields) {
+            try {
+              parsedCustomFields = typeof member.custom_fields === 'string' 
+                ? JSON.parse(member.custom_fields) 
+                : member.custom_fields;
+            } catch (e) {
+              console.warn('Failed to parse custom_fields for member:', member.id, e);
+              parsedCustomFields = { raw_data: member.custom_fields };
+            }
+          }
+
+          return {
+            id: member.id,
+            user_id: member.user_id,
+            membership_id: member.membership_id,
+            email: member.email,
+            name: member.name,
+            username: member.username,
+            waitlist_responses: parsedCustomFields, // Use parsed custom fields as waitlist responses
+            custom_fields: parsedCustomFields, // Also provide as custom_fields
+            joined_at: member.joined_at,
+            status: member.status
+          };
+        }),
         count: result.rows.length
       });
   
@@ -531,6 +608,248 @@ app.get('/api/test-whop-api', async (req, res) => {
       }
     } catch (error) {
       console.error('❌ Test API call error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  });
+  // Add this test endpoint to server.js for debugging API key issues:
+
+app.get('/api/test-whop-api', async (req, res) => {
+    try {
+      const testUserId = req.query.userId || 'user_iSfIwrTJoy3Ab'; // Use the user ID from your logs
+      
+      console.log(`🧪 Testing Whop API with user ID: ${testUserId}`);
+      console.log(`🔑 Using API key: ${process.env.WHOP_API_KEY ? process.env.WHOP_API_KEY.substring(0, 10) + '...' : 'MISSING'}`);
+      
+      const response = await fetch(`https://api.whop.com/api/v5/app/users/${testUserId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${process.env.WHOP_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      });
+  
+      console.log(`📡 API Response status: ${response.status}`);
+      
+      if (response.ok) {
+        const userData = await response.json();
+        console.log('✅ API call successful:', userData);
+        res.json({
+          success: true,
+          userData,
+          message: 'Whop API is working correctly'
+        });
+      } else {
+        const errorText = await response.text();
+        console.error(`❌ API call failed: ${response.status} - ${errorText}`);
+        res.status(response.status).json({
+          success: false,
+          error: errorText,
+          status: response.status
+        });
+      }
+    } catch (error) {
+      console.error('❌ Test API call error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  });
+  
+  // Debug endpoint to check what's in the database
+  app.get('/api/debug-members/:companyId', async (req, res) => {
+    try {
+      const { companyId } = req.params;
+      
+      const result = await pool.query(`
+        SELECT 
+          id, user_id, name, username, email, custom_fields, joined_at
+        FROM whop_members 
+        WHERE company_id = $1
+        ORDER BY joined_at DESC
+      `, [companyId]);
+  
+      console.log('🔍 Raw database results for debugging:');
+      result.rows.forEach((row, index) => {
+        console.log(`Member ${index + 1}:`, {
+          id: row.id,
+          user_id: row.user_id,
+          name: row.name,
+          username: row.username,
+          email: row.email,
+          custom_fields_type: typeof row.custom_fields,
+          custom_fields_content: row.custom_fields,
+          joined_at: row.joined_at
+        });
+      });
+  
+      res.json({
+        success: true,
+        debug: 'Check server logs for detailed member data',
+        members: result.rows.map(row => ({
+          ...row,
+          custom_fields_parsed: (() => {
+            try {
+              return typeof row.custom_fields === 'string' 
+                ? JSON.parse(row.custom_fields) 
+                : row.custom_fields;
+            } catch (e) {
+              return { parse_error: e.message, raw: row.custom_fields };
+            }
+          })()
+        }))
+      });
+  
+    } catch (error) {
+      console.error('❌ Debug endpoint error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  });
+  // Add this test endpoint to server.js for debugging API key issues:
+
+app.get('/api/test-whop-api', async (req, res) => {
+    try {
+      const testUserId = req.query.userId || 'user_iSfIwrTJoy3Ab'; // Use the user ID from your logs
+      
+      console.log(`🧪 Testing Whop API with user ID: ${testUserId}`);
+      console.log(`🔑 Using API key: ${process.env.WHOP_API_KEY ? process.env.WHOP_API_KEY.substring(0, 10) + '...' : 'MISSING'}`);
+      
+      const response = await fetch(`https://api.whop.com/api/v5/app/users/${testUserId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${process.env.WHOP_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      });
+  
+      console.log(`📡 API Response status: ${response.status}`);
+      
+      if (response.ok) {
+        const userData = await response.json();
+        console.log('✅ API call successful:', userData);
+        res.json({
+          success: true,
+          userData,
+          message: 'Whop API is working correctly'
+        });
+      } else {
+        const errorText = await response.text();
+        console.error(`❌ API call failed: ${response.status} - ${errorText}`);
+        res.status(response.status).json({
+          success: false,
+          error: errorText,
+          status: response.status
+        });
+      }
+    } catch (error) {
+      console.error('❌ Test API call error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  });
+  
+  // Test membership endpoint
+  app.get('/api/test-membership', async (req, res) => {
+    try {
+      const testMembershipId = req.query.membershipId || 'mem_vl5OQlqbb59Jpw'; // Use from your logs
+      
+      console.log(`🧪 Testing Membership API with ID: ${testMembershipId}`);
+      
+      const response = await fetch(`https://api.whop.com/api/v2/memberships/${testMembershipId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${process.env.WHOP_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      });
+  
+      console.log(`📡 Membership API Response status: ${response.status}`);
+      
+      if (response.ok) {
+        const membershipData = await response.json();
+        console.log('✅ Membership API call successful:', membershipData);
+        res.json({
+          success: true,
+          membershipData,
+          customFields: {
+            custom_fields_responses: membershipData.custom_fields_responses,
+            custom_fields_responses_v2: membershipData.custom_fields_responses_v2,
+            metadata: membershipData.metadata
+          },
+          message: 'Membership API is working correctly'
+        });
+      } else {
+        const errorText = await response.text();
+        console.error(`❌ Membership API call failed: ${response.status} - ${errorText}`);
+        res.status(response.status).json({
+          success: false,
+          error: errorText,
+          status: response.status
+        });
+      }
+    } catch (error) {
+      console.error('❌ Test membership API call error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  });
+  
+  // Debug endpoint to check what's in the database
+  app.get('/api/debug-members/:companyId', async (req, res) => {
+    try {
+      const { companyId } = req.params;
+      
+      const result = await pool.query(`
+        SELECT 
+          id, user_id, name, username, email, custom_fields, joined_at
+        FROM whop_members 
+        WHERE company_id = $1
+        ORDER BY joined_at DESC
+      `, [companyId]);
+  
+      console.log('🔍 Raw database results for debugging:');
+      result.rows.forEach((row, index) => {
+        console.log(`Member ${index + 1}:`, {
+          id: row.id,
+          user_id: row.user_id,
+          name: row.name,
+          username: row.username,
+          email: row.email,
+          custom_fields_type: typeof row.custom_fields,
+          custom_fields_content: row.custom_fields,
+          joined_at: row.joined_at
+        });
+      });
+  
+      res.json({
+        success: true,
+        debug: 'Check server logs for detailed member data',
+        members: result.rows.map(row => ({
+          ...row,
+          custom_fields_parsed: (() => {
+            try {
+              return typeof row.custom_fields === 'string' 
+                ? JSON.parse(row.custom_fields) 
+                : row.custom_fields;
+            } catch (e) {
+              return { parse_error: e.message, raw: row.custom_fields };
+            }
+          })()
+        }))
+      });
+  
+    } catch (error) {
+      console.error('❌ Debug endpoint error:', error);
       res.status(500).json({
         success: false,
         error: error.message
