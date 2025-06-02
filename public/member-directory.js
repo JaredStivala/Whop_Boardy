@@ -10,6 +10,18 @@ class WhopMemberDirectory {
     async init() {
         console.log('Initializing Whop Member Directory...');
         
+        // Debug iframe context
+        const isInIframe = window.self !== window.top;
+        const currentOrigin = window.location.origin;
+        const parentOrigin = isInIframe ? document.referrer : 'not in iframe';
+        
+        console.log('Iframe context:', {
+            isInIframe,
+            currentOrigin,
+            parentOrigin,
+            userAgent: navigator.userAgent
+        });
+        
         // Always use the correct hardcoded company ID
         this.companyId = 'biz_6GuEa8lMu5p9yl'; // Fixed: lowercase 'l' after 8
         
@@ -52,11 +64,18 @@ class WhopMemberDirectory {
             document.getElementById('loadingState').style.display = 'block';
             document.getElementById('membersTable').style.display = 'none';
 
-            // Build the correct API URL
+            // Build the correct API URL - use relative path for iframe compatibility
             const apiUrl = `/api/directory/${this.companyId}`;
             console.log('Fetching from:', apiUrl);
 
-            const response = await fetch(apiUrl);
+            // Enhanced fetch with explicit headers for iframe context
+            const response = await fetch(apiUrl, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'same-origin'
+            });
             
             if (!response.ok) {
                 // Try to read error body if available
