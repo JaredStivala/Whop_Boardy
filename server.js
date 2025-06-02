@@ -450,6 +450,8 @@ async function handleMembershipInvalid(data) {
 
 // Replace the /api/directory/:companyId route in server.js with this:
 
+// Replace the /api/directory/:companyId route in server.js with this:
+
 app.get('/api/directory/:companyId', async (req, res) => {
     try {
       // Pre-flight DB check
@@ -485,16 +487,35 @@ app.get('/api/directory/:companyId', async (req, res) => {
       res.json({
         success: true,
         members: result.rows.map(member => {
-          // Parse custom_fields if it's a JSON string
+          // Safely parse custom_fields with better error handling
           let parsedCustomFields = {};
           if (member.custom_fields) {
             try {
-              parsedCustomFields = typeof member.custom_fields === 'string' 
-                ? JSON.parse(member.custom_fields) 
-                : member.custom_fields;
+              if (typeof member.custom_fields === 'string') {
+                // Check if it's an ActiveRecord proxy string
+                if (member.custom_fields.includes('ActiveRecord_Associations_CollectionProxy') || 
+                    member.custom_fields.includes('#<')) {
+                  console.log(`⚠️  ActiveRecord proxy detected for member ${member.id}`);
+                  parsedCustomFields = {
+                    status: 'Custom fields detected',
+                    note: 'Upgrade Whop app permissions to see details',
+                    raw_indicator: member.custom_fields.substring(0, 50) + '...'
+                  };
+                } else {
+                  // Try to parse as JSON
+                  parsedCustomFields = JSON.parse(member.custom_fields);
+                }
+              } else {
+                parsedCustomFields = member.custom_fields;
+              }
             } catch (e) {
-              console.warn('Failed to parse custom_fields for member:', member.id, e);
-              parsedCustomFields = { raw_data: member.custom_fields };
+              console.warn(`JSON parse error for member ${member.id}:`, e.message);
+              // Provide a user-friendly fallback
+              parsedCustomFields = {
+                error: 'Unable to parse custom fields',
+                note: 'Custom field data exists but in an unsupported format',
+                raw_length: typeof member.custom_fields === 'string' ? member.custom_fields.length : 'unknown'
+              };
             }
           }
 
@@ -505,7 +526,7 @@ app.get('/api/directory/:companyId', async (req, res) => {
             email: member.email,
             name: member.name,
             username: member.username,
-            waitlist_responses: parsedCustomFields, // Use parsed custom fields as waitlist responses
+            waitlist_responses: parsedCustomFields, // Use safely parsed custom fields
             custom_fields: parsedCustomFields, // Also provide as custom_fields
             joined_at: member.joined_at,
             status: member.status
