@@ -1,4 +1,4 @@
-// ==================== WHOP APP STORE READY SERVER.JS ====================
+// ==================== WHOP APP STORE READY SERVER.JS - FINAL FIX ====================
 
 const express = require('express');
 const { Pool } = require('pg');
@@ -7,7 +7,7 @@ const path = require('path');
 const app = express();
 const port = process.env.PORT || 3000;
 
-console.log('🚀 Starting Whop App Store Ready Member Directory...');
+console.log('🚀 Starting Whop App Store Ready Member Directory - FINAL FIX...');
 
 // Environment Variables Check
 console.log('🔍 Environment Variables Check:');
@@ -99,7 +99,7 @@ pool.connect()
         `);
         await client.query(`
           ALTER TABLE whop_companies 
-          ADD COLUMN IF NOT EXISTS app_version VARCHAR(50) DEFAULT '3.2.0';
+          ADD COLUMN IF NOT EXISTS app_version VARCHAR(50) DEFAULT '3.2.1';
         `);
         console.log('✅ App store columns added for compatibility');
       } catch (error) {
@@ -130,11 +130,11 @@ pool.connect()
         CREATE INDEX IF NOT EXISTS idx_whop_members_status ON whop_members(status);
       `);
       
-      // Create installation tracking table (optional, for analytics)
+      // Create installation tracking table (optional, for analytics) - NO FOREIGN KEY to avoid errors
       await client.query(`
         CREATE TABLE IF NOT EXISTS app_installations (
           id SERIAL PRIMARY KEY,
-          company_id VARCHAR(255) UNIQUE NOT NULL,
+          company_id VARCHAR(255) NOT NULL,
           installed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           installation_method VARCHAR(100) DEFAULT 'first_view',
           user_agent TEXT,
@@ -198,12 +198,16 @@ pool.connect()
     process.exit(1);
   });
 
-// ==================== ENHANCED COMPANY ID EXTRACTION ====================
+// ==================== ENHANCED COMPANY ID EXTRACTION - FIXED FOR WHOP ====================
 
 function extractCompanyId(req) {
-  console.log('🔍 Starting company ID detection...');
-  console.log(`🔍 Full request URL: ${req.get('host')}${req.originalUrl}`);
-  console.log(`🔍 User-Agent: ${req.get('user-agent')}`);
+  console.log('🔍 Starting ENHANCED company ID detection...');
+  console.log(`🔍 Full request details:`, {
+    host: req.get('host'),
+    originalUrl: req.originalUrl,
+    referer: req.headers.referer,
+    userAgent: req.get('user-agent')
+  });
   
   // Enhanced company ID extraction for Whop apps with app store support
   const sources = [
@@ -229,43 +233,60 @@ function extractCompanyId(req) {
     req.body?.data?.business_id,
     req.body?.data?.product?.company_id,
     
-    // Extract from current URL (when embedded in Whop) - NEW!
-    extractCompanyFromCurrentURL(req),
+    // CRITICAL: Extract from Whop's internal app structure (NEW!)
+    extractCompanyFromWhopApps(req.headers.referer),
     
-    // Extract from referer URL (when embedded in Whop)
+    // Extract from referer URL (fallback)
     extractCompanyFromReferer(req.headers.referer)
   ];
   
-  console.log('🔍 Checking sources:', {
+  console.log('🔍 Checking all sources for company ID:', {
     headers: {
       'x-page-id': req.headers['x-page-id'],
       'x-whop-company-id': req.headers['x-whop-company-id'],
       'x-company-id': req.headers['x-company-id'],
-      'referer': req.headers.referer,
-      'host': req.get('host'),
-      'original-url': req.originalUrl
+      'referer': req.headers.referer
     },
     query: req.query,
-    current_url_extraction: extractCompanyFromCurrentURL(req),
-    extracted_from_referer: extractCompanyFromReferer(req.headers.referer)
+    whop_apps_extraction: extractCompanyFromWhopApps(req.headers.referer),
+    standard_referer_extraction: extractCompanyFromReferer(req.headers.referer)
   });
   
   for (const source of sources) {
     if (source && typeof source === 'string' && source.trim()) {
       const cleanId = source.trim();
-      console.log(`🏢 Found company ID: ${cleanId}`);
+      console.log(`🏢 ✅ FOUND COMPANY ID: ${cleanId}`);
       return cleanId;
     }
   }
   
-  console.log('⚠️ No company ID found in request');
+  console.log('⚠️ No company ID found in any source');
+  return null;
+}
+
+// NEW: Extract company ID from Whop's internal app structure
+function extractCompanyFromWhopApps(referer) {
+  if (!referer) return null;
+  
+  console.log(`🔍 WHOP APPS EXTRACTION: Analyzing ${referer}`);
+  
+  // Whop's internal app structure: https://[company-id].apps.whop.com/
+  const whopAppsPattern = /^https?:\/\/([^\.]+)\.apps\.whop\.com/;
+  const match = referer.match(whopAppsPattern);
+  
+  if (match && match[1]) {
+    console.log(`🎯 ✅ WHOP APPS COMPANY ID EXTRACTED: ${match[1]}`);
+    return match[1];
+  }
+  
+  console.log(`❌ No Whop apps pattern found in: ${referer}`);
   return null;
 }
 
 function extractCompanyFromReferer(referer) {
   if (!referer) return null;
   
-  console.log(`🔍 Parsing referer: ${referer}`);
+  console.log(`🔍 STANDARD REFERER EXTRACTION: ${referer}`);
   
   // Enhanced Whop URL patterns for app store apps
   const patterns = [
@@ -298,7 +319,7 @@ function extractCompanyFromReferer(referer) {
   for (const pattern of patterns) {
     const match = referer.match(pattern);
     if (match && match[1] && match[1] !== 'www' && match[1] !== 'app' && match[1] !== 'apps') {
-      console.log(`🎯 Extracted from referer: ${match[1]} (pattern: ${pattern})`);
+      console.log(`🎯 Extracted from standard referer: ${match[1]} (pattern: ${pattern})`);
       return match[1];
     }
   }
@@ -306,29 +327,10 @@ function extractCompanyFromReferer(referer) {
   return null;
 }
 
-// NEW: Extract company from current URL path when embedded
-function extractCompanyFromCurrentURL(req) {
-  const fullUrl = req.get('host') + req.originalUrl;
-  console.log(`🔍 Analyzing current URL: ${fullUrl}`);
-  
-  // Check if we're being accessed through a Whop URL pattern
-  if (req.get('host') && req.get('host').includes('whop.com')) {
-    // Extract from path like: /jaredsuniverse/member-directory-ai-intros-Ka7ql95HHrIiBG/app/
-    const pathMatch = req.originalUrl.match(/\/([^\/]+)\/[^\/]*member-directory/);
-    if (pathMatch && pathMatch[1]) {
-      console.log(`🎯 Company extracted from current URL path: ${pathMatch[1]}`);
-      return pathMatch[1];
-    }
-  }
-  
-  return null;
-}
-
-// ==================== APP STORE INSTALLATION DETECTION ====================
+// ==================== APP STORE INSTALLATION DETECTION - FIXED ====================
 
 async function detectAndHandleNewInstallation(req) {
-  // Check if company ID was manually detected from URL structure first
-  let companyId = req.detectedCompanyId || extractCompanyId(req);
+  const companyId = extractCompanyId(req);
   
   if (!companyId) {
     console.log('⚠️ Cannot detect installation - no company ID found');
@@ -346,7 +348,7 @@ async function detectAndHandleNewInstallation(req) {
     `, [companyId]);
     
     if (existingCompany.rows.length > 0) {
-      console.log(`✅ Existing directory found for ${companyId} (created: ${existingCompany.rows[0].installed_at})`);
+      console.log(`✅ EXISTING directory found for ${companyId} (created: ${existingCompany.rows[0].installed_at})`);
       
       // Update last activity
       await pool.query(`
@@ -363,7 +365,7 @@ async function detectAndHandleNewInstallation(req) {
     }
     
     // This is a new installation! Create the directory
-    console.log(`🎉 NEW INSTALLATION DETECTED: ${companyId}`);
+    console.log(`🎉 ✅ NEW INSTALLATION DETECTED: ${companyId}`);
     
     // Create company directory
     const newCompany = await pool.query(`
@@ -376,11 +378,11 @@ async function detectAndHandleNewInstallation(req) {
         installation_source,
         app_version,
         status
-      ) VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'app_store', '3.2.0', 'active')
+      ) VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'app_store', '3.2.1', 'active')
       RETURNING *
     `, [companyId, generateCompanyName(companyId)]);
     
-    // Track the installation (optional)
+    // Track the installation (optional, no foreign key constraint)
     try {
       await pool.query(`
         INSERT INTO app_installations (
@@ -401,7 +403,7 @@ async function detectAndHandleNewInstallation(req) {
             'x-page-id': req.headers['x-page-id'],
             'x-whop-company-id': req.headers['x-whop-company-id']
           },
-          detected_from_url: !!req.detectedCompanyId,
+          whop_apps_detected: !!extractCompanyFromWhopApps(req.headers.referer),
           timestamp: new Date().toISOString()
         })
       ]);
@@ -409,7 +411,7 @@ async function detectAndHandleNewInstallation(req) {
       console.log('⚠️ Could not track installation (non-critical):', installError.message);
     }
     
-    console.log(`🎯 DIRECTORY CREATED: ${companyId} - Ready for members!`);
+    console.log(`🎯 ✅ DIRECTORY CREATED: ${companyId} - Ready for members!`);
     console.log(`📊 Company Name: ${newCompany.rows[0].company_name}`);
     
     return {
@@ -430,6 +432,11 @@ function generateCompanyName(companyId) {
     return `${companyId.replace('biz_', '').replace(/[^a-zA-Z0-9]/g, ' ')} Community`;
   }
   
+  // For Whop internal IDs, create a more readable name
+  if (companyId.length > 10 && /^[a-zA-Z0-9]+$/.test(companyId)) {
+    return `${companyId.substring(0, 8).toUpperCase()} Directory`;
+  }
+  
   // Clean up the ID to make it more readable
   const cleanName = companyId
     .replace(/[_-]/g, ' ')
@@ -448,9 +455,10 @@ app.get('/api/health', (req, res) => {
     success: true, 
     message: 'Whop App Store Ready Directory is healthy!', 
     timestamp: new Date().toISOString(),
-    version: '3.2.0',
+    version: '3.2.1',
     features: [
       'auto-installation-detection',
+      'whop-apps-support',
       'app-store-ready',
       'multi-tenant-directories',
       'enhanced-company-detection',
@@ -462,7 +470,7 @@ app.get('/api/health', (req, res) => {
 
 // Enhanced test endpoint
 app.get('/api/test', async (req, res) => {
-  const extractedId = req.detectedCompanyId || extractCompanyId(req);
+  const extractedId = extractCompanyId(req);
   
   // Test installation detection
   const installationResult = extractedId ? await detectAndHandleNewInstallation(req) : null;
@@ -488,7 +496,6 @@ app.get('/api/test', async (req, res) => {
     installation_detection: installationResult,
     system_stats: stats,
     detection_debug: {
-      manually_detected_from_url: req.detectedCompanyId || 'none',
       url_info: {
         host: req.get('host'),
         original_url: req.originalUrl,
@@ -502,12 +509,13 @@ app.get('/api/test', async (req, res) => {
         'referer': req.headers.referer || 'missing'
       },
       query_params: req.query,
-      current_url_extraction: extractCompanyFromCurrentURL(req),
-      extracted_from_referer: extractCompanyFromReferer(req.headers.referer)
+      whop_apps_extraction: extractCompanyFromWhopApps(req.headers.referer),
+      standard_referer_extraction: extractCompanyFromReferer(req.headers.referer)
     },
     app_store_info: {
-      version: '3.2.0',
+      version: '3.2.1',
       auto_installation: 'enabled',
+      whop_apps_support: 'enabled',
       whop_embedding_support: 'enhanced',
       webhook_endpoint: '/webhook/whop',
       supported_events: [
@@ -530,17 +538,12 @@ app.get('/api/members/:companyId?', async (req, res) => {
   let installationResult = null;
   
   if (!companyId || companyId === 'auto') {
-    // Check if company ID was manually detected first
-    const detectedId = req.detectedCompanyId || extractCompanyId(req);
+    // Try to detect installation
+    installationResult = await detectAndHandleNewInstallation(req);
     
-    if (detectedId) {
-      // Mock a request object with the detected company ID for installation detection
-      const mockReq = { ...req, detectedCompanyId: detectedId };
-      installationResult = await detectAndHandleNewInstallation(mockReq);
-      
-      if (installationResult) {
-        companyId = installationResult.companyId;
-      }
+    if (installationResult) {
+      companyId = installationResult.companyId;
+      console.log(`✅ Auto-detected company: ${companyId}`);
     }
   }
   
@@ -555,9 +558,9 @@ app.get('/api/members/:companyId?', async (req, res) => {
       available_companies: availableCompanies,
       debug: {
         extracted_id: extractCompanyId(req),
-        manually_detected: req.detectedCompanyId,
         referer: req.headers.referer,
         installation_result: installationResult,
+        whop_apps_detection: extractCompanyFromWhopApps(req.headers.referer),
         url_info: {
           host: req.get('host'),
           original_url: req.originalUrl,
@@ -609,7 +612,7 @@ app.get('/api/members/:companyId?', async (req, res) => {
       company_name: companyInfo.company_name || companyId,
       is_new_installation: isNewDirectory,
       directory_created: companyInfo.directory_created,
-      detection_method: req.detectedCompanyId ? 'url_structure' : 'standard',
+      detection_method: 'whop_apps_auto_detect',
       message: isNewDirectory ? 
         'Welcome! Your member directory has been created. Members will appear here as they join your community.' :
         `Loaded ${members.length} members from your directory.`,
@@ -969,24 +972,6 @@ async function ensureCompanyExists(companyId) {
 
 // ==================== FRONTEND ROUTES WITH INSTALLATION DETECTION ====================
 
-// Special route for Whop embedded apps (detects company from URL structure)
-app.get('/:companyId/member-directory*', async (req, res) => {
-  const { companyId } = req.params;
-  console.log(`🎯 WHOP EMBEDDED APP DETECTED: Company ID from URL: ${companyId}`);
-  
-  // Manually set the company ID in the request for downstream processing
-  req.detectedCompanyId = companyId;
-  
-  // Detect and handle new installations
-  const installationResult = await detectAndHandleNewInstallation(req);
-  
-  if (installationResult?.isNewInstallation) {
-    console.log(`🎉 NEW APP INSTALLATION: ${installationResult.companyId} - Serving fresh directory`);
-  }
-  
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
 // Main app route with installation detection
 app.get('/', async (req, res) => {
   console.log('🏠 Main app route accessed');
@@ -1060,13 +1045,14 @@ app.get('*', (req, res) => {
 
 app.listen(port, () => {
   console.log('');
-  console.log('🎉 ===== WHOP APP STORE READY MEMBER DIRECTORY =====');
+  console.log('🎉 ===== WHOP APP STORE READY MEMBER DIRECTORY - FINAL =====');
   console.log(`🚀 Server running on port ${port}`);
   console.log(`📱 App URL: ${process.env.NODE_ENV === 'production' ? 'https://your-app-domain.railway.app' : `http://localhost:${port}`}/`);
   console.log(`🔗 Webhook URL: ${process.env.NODE_ENV === 'production' ? 'https://your-app-domain.railway.app' : `http://localhost:${port}`}/webhook/whop`);
   console.log('');
   console.log('🏪 APP STORE FEATURES:');
   console.log('   ✅ Automatic directory creation on first view');
+  console.log('   ✅ Whop internal app detection (*.apps.whop.com)');
   console.log('   ✅ Multi-tenant support (separate directories per company)');
   console.log('   ✅ Installation tracking and analytics');
   console.log('   ✅ Enhanced company ID detection');
@@ -1075,9 +1061,10 @@ app.listen(port, () => {
   console.log('');
   console.log('📋 How App Store Installation Works:');
   console.log('   1️⃣  USER INSTALLS → App added to their Whop dashboard');
-  console.log('   2️⃣  FIRST VIEW → Auto-detects company and creates directory');
-  console.log('   3️⃣  MEMBERS JOIN → Webhooks automatically add them');
-  console.log('   4️⃣  SUBSEQUENT VIEWS → Shows populated directory');
+  console.log('   2️⃣  FIRST VIEW → Auto-detects company from *.apps.whop.com');
+  console.log('   3️⃣  DIRECTORY CREATED → New installation detected and directory created');
+  console.log('   4️⃣  MEMBERS JOIN → Webhooks automatically add them');
+  console.log('   5️⃣  SUBSEQUENT VIEWS → Shows populated directory');
   console.log('');
   console.log('🔧 Supported Whop Webhook Events:');
   console.log('   👤 membership_went_valid → Add member to directory');
