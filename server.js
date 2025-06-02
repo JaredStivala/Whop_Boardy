@@ -151,29 +151,33 @@ pool.connect()
         CREATE INDEX IF NOT EXISTS idx_app_installations_company_id ON app_installations(company_id);
       `);
       
-      // Create triggers for updating timestamps
+      // Create triggers for updating timestamps - FIXED
       await client.query(`
         CREATE OR REPLACE FUNCTION update_updated_at_column()
-        RETURNS TRIGGER AS $$
+        RETURNS TRIGGER AS $
         BEGIN
-          NEW.updated_at = CURRENT_TIMESTAMP;
+          IF TG_TABLE_NAME = 'whop_members' THEN
+            NEW.updated_at = CURRENT_TIMESTAMP;
+          END IF;
           RETURN NEW;
         END;
-        $$ language 'plpgsql';
+        $ language 'plpgsql';
+        
+        CREATE OR REPLACE FUNCTION update_last_activity_column()
+        RETURNS TRIGGER AS $
+        BEGIN
+          IF TG_TABLE_NAME = 'whop_companies' THEN
+            NEW.last_activity = CURRENT_TIMESTAMP;
+          END IF;
+          RETURN NEW;
+        END;
+        $ language 'plpgsql';
         
         DROP TRIGGER IF EXISTS update_whop_members_updated_at ON whop_members;
         CREATE TRIGGER update_whop_members_updated_at
           BEFORE UPDATE ON whop_members
           FOR EACH ROW
           EXECUTE FUNCTION update_updated_at_column();
-          
-        CREATE OR REPLACE FUNCTION update_last_activity_column()
-        RETURNS TRIGGER AS $$
-        BEGIN
-          NEW.last_activity = CURRENT_TIMESTAMP;
-          RETURN NEW;
-        END;
-        $$ language 'plpgsql';
           
         DROP TRIGGER IF EXISTS update_whop_companies_last_activity ON whop_companies;
         CREATE TRIGGER update_whop_companies_last_activity
