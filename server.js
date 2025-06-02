@@ -18,11 +18,42 @@ pool.on('error', (err, client) => {
     console.error('🟥 DATABASE POOL ERROR:', err.message, err.stack);
 });
 
-// Middleware - IMPORTANT: Configure CORS for Whop iframe
+// In server.js, replace the existing CORS and CSP configuration with this:
+
+// Enhanced CORS configuration for Whop iframe
 app.use(cors({
-  origin: ['https://whop.com', 'https://dash.whop.com', 'http://localhost:3000','https://app.whop.com', 'https://whopboardy-production.up.railway.app'],
-  credentials: true
-}));
+    origin: [
+      'https://whop.com',
+      'https://dash.whop.com', 
+      'https://app.whop.com',
+      'https://apps.whop.com',  // Add this - apps subdomain
+      'http://localhost:3000',
+      'https://whopboardy-production.up.railway.app'
+    ],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  }));
+  
+  // Enhanced headers for iframe compatibility
+  app.use((req, res, next) => {
+    // Allow embedding in Whop iframes
+    res.setHeader('X-Frame-Options', 'ALLOWALL');
+    
+    // More permissive CSP for Whop iframe
+    res.setHeader('Content-Security-Policy', 
+      "frame-ancestors 'self' https://*.whop.com https://whop.com http://localhost:*; " +
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+      "style-src 'self' 'unsafe-inline'; " +
+      "connect-src 'self' https://*.whop.com https://whop.com;"
+    );
+    
+    // Additional headers for iframe support
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'origin-when-cross-origin');
+    
+    next();
+  });
 
 // Middleware to get raw body for signature verification
 // This MUST come BEFORE express.json() if you need the raw body
