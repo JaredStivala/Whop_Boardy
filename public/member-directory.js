@@ -1,3 +1,4 @@
+// Enhanced Multi-Tenant Member Directory JavaScript
 class MemberDirectory {
     constructor() {
         this.members = [];
@@ -6,16 +7,104 @@ class MemberDirectory {
         this.sortField = 'joined_at';
         this.sortDirection = 'desc';
         this.loading = false;
+        this.currentCompanyId = null;
+        this.error = null;
         this.init();
     }
 
     async init() {
-        this.createModernUI();
-        await this.loadMembers();
-        this.setupEventListeners();
+        try {
+            console.log('🚀 Initializing Multi-Tenant Member Directory...');
+            this.createModernUI();
+            await this.loadMembers();
+            this.setupEventListeners();
+        } catch (error) {
+            console.error('❌ Initialization error:', error);
+            this.showError(`Initialization failed: ${error.message}`);
+        }
+    }
+
+    // 🔧 FIX: Enhanced company detection from multiple sources
+    detectCompanyId() {
+        // Priority order for company detection:
+        // 1. URL parameter (?company=xyz)
+        // 2. Extracted from current URL path
+        // 3. From local storage (previous session)
+        // 4. Auto-detect via API
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlCompany = urlParams.get('company');
+        if (urlCompany) {
+            console.log(`🏢 Company ID from URL: ${urlCompany}`);
+            this.storeCompanyId(urlCompany);
+            return urlCompany;
+        }
+
+        // Check for company in path (e.g., /company/abc123)
+        const pathMatch = window.location.pathname.match(/\/company\/([^\/]+)/);
+        if (pathMatch) {
+            const pathCompany = pathMatch[1];
+            console.log(`🏢 Company ID from path: ${pathCompany}`);
+            this.storeCompanyId(pathCompany);
+            return pathCompany;
+        }
+
+        // Check for Whop-specific patterns in URL
+        const whopMatch = window.location.pathname.match(/\/(biz_[^\/]+)/);
+        if (whopMatch) {
+            const whopCompany = whopMatch[1];
+            console.log(`🏢 Company ID from Whop pattern: ${whopCompany}`);
+            this.storeCompanyId(whopCompany);
+            return whopCompany;
+        }
+
+        // Fall back to last known company
+        const lastCompany = this.getStoredCompanyId();
+        if (lastCompany) {
+            console.log(`🏢 Using last known company: ${lastCompany}`);
+            return lastCompany;
+        }
+
+        console.log('🏢 No company ID detected, will auto-detect');
+        return 'auto';
+    }
+
+    storeCompanyId(companyId) {
+        try {
+            localStorage.setItem('whop_last_company_id', companyId);
+            localStorage.setItem('whop_company_timestamp', Date.now().toString());
+        } catch (e) {
+            console.warn('Could not store company ID in localStorage:', e);
+        }
+    }
+
+    getStoredCompanyId() {
+        try {
+            const companyId = localStorage.getItem('whop_last_company_id');
+            const timestamp = localStorage.getItem('whop_company_timestamp');
+            
+            // Only use stored company ID if it's less than 24 hours old
+            if (companyId && timestamp) {
+                const age = Date.now() - parseInt(timestamp);
+                const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+                
+                if (age < maxAge) {
+                    return companyId;
+                }
+            }
+        } catch (e) {
+            console.warn('Could not retrieve company ID from localStorage:', e);
+        }
+        return null;
     }
 
     createModernUI() {
+        // Only create UI if we're not already initialized
+        if (document.getElementById('membersTable')) {
+            console.log('UI already exists, skipping creation');
+            return;
+        }
+
         document.body.innerHTML = `
             <div class="app-container">
                 <!-- Header -->
@@ -30,7 +119,7 @@ class MemberDirectory {
                             </div>
                             <div class="header-title">
                                 <h1>Member Directory</h1>
-                                <p>Connect with fellow community members</p>
+                                <p id="companySubtitle">Connect with fellow community members</p>
                             </div>
                         </div>
                         <div class="header-actions">
@@ -128,7 +217,7 @@ class MemberDirectory {
                         </div>
                         
                         <div class="table-wrapper">
-                            <table class="members-table">
+                            <table class="members-table" id="membersTable">
                                 <thead>
                                     <tr>
                                         <th class="col-member">
@@ -181,6 +270,12 @@ class MemberDirectory {
                 </section>
             </div>
 
+            ${this.getStyles()}
+        `;
+    }
+
+    getStyles() {
+        return `
             <style>
                 /* Modern CSS Reset and Base Styles */
                 * {
@@ -656,6 +751,11 @@ class MemberDirectory {
                     font-size: 14px;
                 }
 
+                /* Column Widths */
+                .col-member { width: 35%; }
+                .col-custom-fields { width: 45%; }
+                .col-joined { width: 20%; }
+
                 /* Responsive Design */
                 @media (max-width: 768px) {
                     .header-content {
@@ -699,14 +799,7 @@ class MemberDirectory {
                     .custom-fields {
                         max-width: none;
                     }
-                }
 
-                /* Column Widths */
-                .col-member { width: 35%; }
-                .col-custom-fields { width: 45%; }
-                .col-joined { width: 20%; }
-
-                @media (max-width: 768px) {
                     .col-member, .col-custom-fields, .col-joined { 
                         width: auto; 
                     }
@@ -718,14 +811,14 @@ class MemberDirectory {
     setupEventListeners() {
         // Search functionality
         const searchInput = document.getElementById('searchInput');
-        searchInput.addEventListener('input', (e) => {
+        searchInput?.addEventListener('input', (e) => {
             this.searchTerm = e.target.value.toLowerCase();
             this.filterAndRenderMembers();
         });
 
         // Sort functionality
         const sortSelect = document.getElementById('sortSelect');
-        sortSelect.addEventListener('change', (e) => {
+        sortSelect?.addEventListener('change', (e) => {
             const [field, direction] = e.target.value.split('_');
             this.sortField = field;
             this.sortDirection = direction;
@@ -734,7 +827,7 @@ class MemberDirectory {
 
         // Refresh functionality
         const refreshBtn = document.getElementById('refreshBtn');
-        refreshBtn.addEventListener('click', () => {
+        refreshBtn?.addEventListener('click', () => {
             this.loadMembers();
         });
 
@@ -756,21 +849,56 @@ class MemberDirectory {
 
     updateSortSelect() {
         const sortSelect = document.getElementById('sortSelect');
-        sortSelect.value = `${this.sortField}_${this.sortDirection}`;
+        if (sortSelect) {
+            sortSelect.value = `${this.sortField}_${this.sortDirection}`;
+        }
     }
 
+    // 🔧 FIXED: Enhanced loadMembers with proper company detection
     async loadMembers() {
         this.setLoading(true);
+        this.error = null;
         
         try {
             console.log('🔍 Loading members from API...');
-            const response = await fetch('/api/members/biz_6GuEa8lMu5p9yl');
+            
+            // Detect company ID using enhanced method
+            const detectedCompanyId = this.detectCompanyId();
+            const endpoint = `/api/members/${detectedCompanyId}`;
+            
+            console.log(`📡 Making request to: ${endpoint}`);
+            
+            const response = await fetch(endpoint, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    // Include company ID in header if available (for Whop context)
+                    ...(detectedCompanyId && detectedCompanyId !== 'auto' && {
+                        'x-company-id': detectedCompanyId
+                    })
+                }
+            });
             
             console.log('📡 Response status:', response.status);
             console.log('📡 Response headers:', response.headers.get('content-type'));
             
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                const errorText = await response.text();
+                let errorData;
+                
+                try {
+                    errorData = JSON.parse(errorText);
+                } catch (e) {
+                    throw new Error(`HTTP ${response.status}: ${errorText.substring(0, 200)}`);
+                }
+                
+                // Handle specific multi-tenant errors
+                if (response.status === 400 && errorData.available_companies) {
+                    this.showCompanySelectionError(errorData);
+                    return;
+                }
+                
+                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
             }
             
             const contentType = response.headers.get('content-type');
@@ -785,18 +913,89 @@ class MemberDirectory {
             
             if (data.success) {
                 this.members = data.members || [];
-                console.log(`📊 Loaded ${this.members.length} members`);
+                this.currentCompanyId = data.company_id;
+                console.log(`📊 Loaded ${this.members.length} members for company ${data.company_id}`);
+                
+                // Update UI with company info
+                this.updateCompanyInfo(data.company_id);
+                
                 this.filterAndRenderMembers();
                 this.updateStats();
             } else {
-                console.error('Failed to load members:', data.error);
-                this.showError(`Failed to load members: ${data.error || 'Unknown error'}`);
+                this.error = data.error || 'Unknown error';
+                console.error('Failed to load members:', this.error);
+                this.showError(`Failed to load members: ${this.error}`);
             }
         } catch (error) {
+            this.error = error.message;
             console.error('❌ Error loading members:', error);
             this.showError(`Error loading members: ${error.message}`);
         } finally {
             this.setLoading(false);
+        }
+    }
+
+    showCompanySelectionError(errorData) {
+        const tableBody = document.getElementById('membersTableBody');
+        const emptyState = document.getElementById('emptyState');
+        
+        if (tableBody) {
+            tableBody.style.display = 'table-row-group';
+            if (emptyState) emptyState.style.display = 'none';
+            
+            const companiesList = errorData.available_companies
+                .map(c => `<li><button onclick="memberDirectory.selectCompany('${c.company_id}')" class="btn-secondary" style="margin: 4px 0;">${c.company_id} (${c.member_count} members)</button></li>`)
+                .join('');
+            
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="3" class="error-cell">
+                        <div style="text-align: center; padding: 40px;">
+                            <div style="color: #fbbf24; font-size: 18px; margin-bottom: 12px;">🏢 Multiple Communities Detected</div>
+                            <div style="color: #71717a; font-size: 14px; margin-bottom: 20px;">
+                                This app supports multiple communities. Please select your community:
+                            </div>
+                            ${errorData.available_companies.length > 0 ? `
+                                <div style="margin: 20px 0;">
+                                    <h4 style="color: #fff; margin-bottom: 12px;">Available Communities:</h4>
+                                    <ul style="list-style: none; padding: 0;">
+                                        ${companiesList}
+                                    </ul>
+                                </div>
+                            ` : ''}
+                            <div style="margin-top: 20px; font-size: 12px; color: #666;">
+                                Or add ?company=your_company_id to the URL
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
+    }
+
+    selectCompany(companyId) {
+        console.log(`🏢 Selecting company: ${companyId}`);
+        
+        // Update URL with company parameter
+        const url = new URL(window.location);
+        url.searchParams.set('company', companyId);
+        window.history.pushState({}, '', url);
+        
+        // Store for future sessions
+        this.storeCompanyId(companyId);
+        
+        // Reload members
+        this.loadMembers();
+    }
+
+    updateCompanyInfo(companyId) {
+        if (companyId) {
+            const subtitle = document.getElementById('companySubtitle');
+            if (subtitle) {
+                subtitle.textContent = `Connect with fellow community members • ${companyId}`;
+            }
+            
+            document.title = `Member Directory - ${companyId}`;
         }
     }
 
@@ -806,11 +1005,11 @@ class MemberDirectory {
         const tableBody = document.getElementById('membersTableBody');
         
         if (loading) {
-            loadingState.style.display = 'flex';
-            tableBody.style.display = 'none';
+            if (loadingState) loadingState.style.display = 'flex';
+            if (tableBody) tableBody.style.display = 'none';
         } else {
-            loadingState.style.display = 'none';
-            tableBody.style.display = 'table-row-group';
+            if (loadingState) loadingState.style.display = 'none';
+            if (tableBody) tableBody.style.display = 'table-row-group';
         }
     }
 
@@ -818,27 +1017,29 @@ class MemberDirectory {
         const tableBody = document.getElementById('membersTableBody');
         const emptyState = document.getElementById('emptyState');
         
-        tableBody.style.display = 'table-row-group';
-        emptyState.style.display = 'none';
-        
-        tableBody.innerHTML = `
-            <tr>
-                <td colspan="3" class="error-cell">
-                    <div style="text-align: center; padding: 40px;">
-                        <div style="color: #ef4444; font-size: 18px; margin-bottom: 12px;">⚠️ ${this.escapeHtml(message)}</div>
-                        <div style="color: #71717a; font-size: 14px; margin-bottom: 20px;">
-                            Check the browser console for more details
+        if (tableBody) {
+            tableBody.style.display = 'table-row-group';
+            if (emptyState) emptyState.style.display = 'none';
+            
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="3" class="error-cell">
+                        <div style="text-align: center; padding: 40px;">
+                            <div style="color: #ef4444; font-size: 18px; margin-bottom: 12px;">⚠️ ${this.escapeHtml(message)}</div>
+                            <div style="color: #71717a; font-size: 14px; margin-bottom: 20px;">
+                                Check the browser console for more details
+                            </div>
+                            <button onclick="memberDirectory.testConnection()" class="btn-secondary" style="margin-right: 12px;">
+                                Test API Connection
+                            </button>
+                            <button onclick="memberDirectory.loadMembers()" class="btn-secondary">
+                                Retry
+                            </button>
                         </div>
-                        <button onclick="memberDirectory.testConnection()" class="btn-secondary" style="margin-right: 12px;">
-                            Test API Connection
-                        </button>
-                        <button onclick="memberDirectory.loadMembers()" class="btn-secondary">
-                            Retry
-                        </button>
-                    </div>
-                </td>
-            </tr>
-        `;
+                    </td>
+                </tr>
+            `;
+        }
     }
 
     async testConnection() {
@@ -850,31 +1051,11 @@ class MemberDirectory {
             console.log('📡 Basic API test response:', response.status);
             
             if (response.ok) {
-                const data = await response.text();
+                const data = await response.json();
                 console.log('✅ Basic API working:', data);
                 
-                // Test members endpoint specifically
-                console.log('🔍 Testing members endpoint...');
-                const membersResponse = await fetch('/api/members/biz_6GuEa8lMu5p9yl');
-                console.log('📡 Members API response:', membersResponse.status, membersResponse.statusText);
-                
-                const responseText = await membersResponse.text();
-                console.log('📄 Raw response:', responseText.substring(0, 500));
-                
-                if (responseText.startsWith('<')) {
-                    console.error('❌ Server is returning HTML instead of JSON');
-                    alert('❌ Server error: The API is returning HTML instead of JSON. Check server logs for details.');
-                } else {
-                    console.log('✅ Response looks like JSON');
-                    try {
-                        const data = JSON.parse(responseText);
-                        console.log('✅ Valid JSON response:', data);
-                        alert('✅ API connection successful! Try refreshing the page.');
-                    } catch (e) {
-                        console.error('❌ Invalid JSON:', e);
-                        alert('❌ API returned invalid JSON');
-                    }
-                }
+                const msg = `✅ API Connection Successful!\n\nDetected Company: ${data.detected_company}\nServer: ${data.server}`;
+                alert(msg);
             } else {
                 console.error('❌ Basic API test failed:', response.status);
                 alert(`❌ API connection failed: ${response.status} ${response.statusText}`);
@@ -931,6 +1112,8 @@ class MemberDirectory {
     renderMembers() {
         const tableBody = document.getElementById('membersTableBody');
         const emptyState = document.getElementById('emptyState');
+        
+        if (!tableBody || !emptyState) return;
         
         if (this.filteredMembers.length === 0) {
             tableBody.style.display = 'none';
@@ -1053,9 +1236,13 @@ class MemberDirectory {
         
         const activeMembers = this.members.filter(member => member.status === 'active').length;
 
-        document.getElementById('totalMembers').textContent = totalMembers;
-        document.getElementById('newThisMonth').textContent = newThisMonth;
-        document.getElementById('activeMembers').textContent = activeMembers;
+        const totalElement = document.getElementById('totalMembers');
+        const newElement = document.getElementById('newThisMonth');
+        const activeElement = document.getElementById('activeMembers');
+
+        if (totalElement) totalElement.textContent = totalMembers;
+        if (newElement) newElement.textContent = newThisMonth;
+        if (activeElement) activeElement.textContent = activeMembers;
     }
 
     updateMemberCount() {
@@ -1063,10 +1250,12 @@ class MemberDirectory {
         const total = this.members.length;
         const memberCount = document.getElementById('memberCount');
         
-        if (count === total) {
-            memberCount.textContent = `${total} member${total !== 1 ? 's' : ''}`;
-        } else {
-            memberCount.textContent = `${count} of ${total} member${total !== 1 ? 's' : ''}`;
+        if (memberCount) {
+            if (count === total) {
+                memberCount.textContent = `${total} member${total !== 1 ? 's' : ''}`;
+            } else {
+                memberCount.textContent = `${count} of ${total} member${total !== 1 ? 's' : ''}`;
+            }
         }
     }
 

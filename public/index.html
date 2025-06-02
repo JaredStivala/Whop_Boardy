@@ -63,7 +63,7 @@
     <div id="app"></div>
 
     <script>
-        // Member Directory Application - FIXED VERSION
+        // Enhanced Multi-Tenant Member Directory Application
         class MemberDirectory {
             constructor() {
                 this.members = [];
@@ -73,18 +73,20 @@
                 this.sortDirection = 'desc';
                 this.loading = false;
                 this.currentCompanyId = null;
+                this.error = null;
                 this.init();
             }
 
             async init() {
                 try {
-                    console.log('🚀 Initializing Member Directory...');
+                    console.log('🚀 Initializing Multi-Tenant Member Directory...');
                     this.createModernUI();
                     await this.loadMembers();
                     this.setupEventListeners();
                     this.hideLoadingScreen();
                 } catch (error) {
                     console.error('❌ Initialization error:', error);
+                    this.showError(`Initialization failed: ${error.message}`);
                     this.hideLoadingScreen();
                 }
             }
@@ -97,6 +99,42 @@
                         loadingScreen.style.display = 'none';
                     }, 300);
                 }
+            }
+
+            // 🔧 FIX: Enhanced company detection from multiple sources
+            detectCompanyId() {
+                // Priority order for company detection:
+                // 1. URL parameter (?company=xyz)
+                // 2. Extracted from current URL path
+                // 3. From local storage (previous session)
+                // 4. Auto-detect via API
+
+                const urlParams = new URLSearchParams(window.location.search);
+                const urlCompany = urlParams.get('company');
+                if (urlCompany) {
+                    console.log(`🏢 Company ID from URL: ${urlCompany}`);
+                    localStorage.setItem('last_company_id', urlCompany);
+                    return urlCompany;
+                }
+
+                // Check for company in path (e.g., /company/abc123)
+                const pathMatch = window.location.pathname.match(/\/company\/([^\/]+)/);
+                if (pathMatch) {
+                    const pathCompany = pathMatch[1];
+                    console.log(`🏢 Company ID from path: ${pathCompany}`);
+                    localStorage.setItem('last_company_id', pathCompany);
+                    return pathCompany;
+                }
+
+                // Fall back to last known company
+                const lastCompany = localStorage.getItem('last_company_id');
+                if (lastCompany) {
+                    console.log(`🏢 Using last known company: ${lastCompany}`);
+                    return lastCompany;
+                }
+
+                console.log('🏢 No company ID detected, will auto-detect');
+                return 'auto';
             }
 
             createModernUI() {
@@ -115,7 +153,7 @@
                                     </div>
                                     <div class="header-title">
                                         <h1>Member Directory</h1>
-                                        <p>Connect with fellow community members</p>
+                                        <p id="companySubtitle">Connect with fellow community members</p>
                                     </div>
                                 </div>
                                 <div class="header-actions">
@@ -127,9 +165,36 @@
                                         </svg>
                                         Refresh
                                     </button>
+                                    <button class="btn-secondary" id="debugBtn" style="margin-left: 8px;">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                                            <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
+                                            <path d="M12 1v6M12 17v6M4.22 4.22l4.24 4.24M15.54 15.54l4.24 4.24M1 12h6M17 12h6M4.22 19.78l4.24-4.24M15.54 8.46l4.24-4.24" stroke="currentColor" stroke-width="2"/>
+                                        </svg>
+                                        Debug
+                                    </button>
                                 </div>
                             </div>
                         </header>
+
+                        <!-- Debug Info (hidden by default) -->
+                        <div id="debugInfo" class="debug-panel" style="display: none;">
+                            <div class="debug-content">
+                                <h3>🔍 Debug Information</h3>
+                                <div class="debug-grid">
+                                    <div><strong>Detected Company:</strong> <span id="debugCompany">-</span></div>
+                                    <div><strong>Current URL:</strong> <span id="debugUrl">-</span></div>
+                                    <div><strong>API Endpoint:</strong> <span id="debugEndpoint">-</span></div>
+                                    <div><strong>Last Error:</strong> <span id="debugError">-</span></div>
+                                    <div><strong>Member Count:</strong> <span id="debugMemberCount">-</span></div>
+                                    <div><strong>Available Companies:</strong> <span id="debugCompanies">-</span></div>
+                                </div>
+                                <div class="debug-actions" style="margin-top: 16px;">
+                                    <button onclick="memberDirectory.testConnection()" class="btn-debug">Test API</button>
+                                    <button onclick="memberDirectory.loadAvailableCompanies()" class="btn-debug">List Companies</button>
+                                    <button onclick="memberDirectory.clearCache()" class="btn-debug">Clear Cache</button>
+                                </div>
+                            </div>
+                        </div>
 
                         <!-- Stats Cards -->
                         <section class="stats-section">
@@ -293,6 +358,53 @@
                             background: linear-gradient(180deg, #0a0a0a 0%, #111111 100%);
                         }
 
+                        /* Debug Panel */
+                        .debug-panel {
+                            background: rgba(255, 193, 7, 0.1);
+                            border: 1px solid rgba(255, 193, 7, 0.3);
+                            border-radius: 8px;
+                            margin: 20px 24px;
+                            padding: 20px;
+                        }
+
+                        .debug-content h3 {
+                            color: #ffc107;
+                            margin-bottom: 16px;
+                            font-size: 16px;
+                        }
+
+                        .debug-grid {
+                            display: grid;
+                            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                            gap: 12px;
+                            font-size: 14px;
+                        }
+
+                        .debug-grid div {
+                            color: #e0e0e0;
+                        }
+
+                        .debug-grid strong {
+                            color: #ffc107;
+                        }
+
+                        .btn-debug {
+                            background: rgba(255, 193, 7, 0.2);
+                            border: 1px solid rgba(255, 193, 7, 0.4);
+                            color: #ffc107;
+                            padding: 8px 16px;
+                            border-radius: 6px;
+                            font-size: 12px;
+                            cursor: pointer;
+                            margin-right: 8px;
+                            transition: all 0.2s;
+                        }
+
+                        .btn-debug:hover {
+                            background: rgba(255, 193, 7, 0.3);
+                            border-color: rgba(255, 193, 7, 0.6);
+                        }
+
                         /* Header Styles */
                         .app-header {
                             background: rgba(17, 17, 17, 0.8);
@@ -342,6 +454,11 @@
                         .header-title p {
                             font-size: 14px;
                             color: #71717a;
+                        }
+
+                        .header-actions {
+                            display: flex;
+                            align-items: center;
                         }
 
                         /* Button Styles */
@@ -827,6 +944,12 @@
                     this.loadMembers();
                 });
 
+                // Debug functionality
+                const debugBtn = document.getElementById('debugBtn');
+                debugBtn?.addEventListener('click', () => {
+                    this.toggleDebugPanel();
+                });
+
                 // Sort by column headers
                 document.querySelectorAll('[data-sort]').forEach(button => {
                     button.addEventListener('click', (e) => {
@@ -843,6 +966,24 @@
                 });
             }
 
+            toggleDebugPanel() {
+                const debugPanel = document.getElementById('debugInfo');
+                if (debugPanel.style.display === 'none') {
+                    debugPanel.style.display = 'block';
+                    this.updateDebugInfo();
+                } else {
+                    debugPanel.style.display = 'none';
+                }
+            }
+
+            updateDebugInfo() {
+                document.getElementById('debugCompany').textContent = this.currentCompanyId || 'None detected';
+                document.getElementById('debugUrl').textContent = window.location.href;
+                document.getElementById('debugEndpoint').textContent = `/api/members/${this.currentCompanyId || 'auto'}`;
+                document.getElementById('debugError').textContent = this.error || 'None';
+                document.getElementById('debugMemberCount').textContent = this.members.length.toString();
+            }
+
             updateSortSelect() {
                 const sortSelect = document.getElementById('sortSelect');
                 if (sortSelect) {
@@ -850,21 +991,51 @@
                 }
             }
 
-            // 🔧 FIX: Use auto-detection for company ID (multi-tenant support)
+            // 🔧 FIXED: Enhanced loadMembers with proper company detection
             async loadMembers() {
                 this.setLoading(true);
+                this.error = null;
                 
                 try {
                     console.log('🔍 Loading members from API...');
                     
-                    // Use auto-detection endpoint instead of hardcoded company ID
-                    const response = await fetch('/api/members/auto');
+                    // Detect company ID using enhanced method
+                    const detectedCompanyId = this.detectCompanyId();
+                    const endpoint = `/api/members/${detectedCompanyId}`;
+                    
+                    console.log(`📡 Making request to: ${endpoint}`);
+                    
+                    const response = await fetch(endpoint, {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            // Include company ID in header if available (for Whop context)
+                            ...(detectedCompanyId && detectedCompanyId !== 'auto' && {
+                                'x-company-id': detectedCompanyId
+                            })
+                        }
+                    });
                     
                     console.log('📡 Response status:', response.status);
                     console.log('📡 Response headers:', response.headers.get('content-type'));
                     
                     if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
+                        const errorText = await response.text();
+                        let errorData;
+                        
+                        try {
+                            errorData = JSON.parse(errorText);
+                        } catch (e) {
+                            throw new Error(`HTTP ${response.status}: ${errorText.substring(0, 200)}`);
+                        }
+                        
+                        // Handle specific multi-tenant errors
+                        if (response.status === 400 && errorData.available_companies) {
+                            this.showCompanySelectionError(errorData);
+                            return;
+                        }
+                        
+                        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
                     }
                     
                     const contentType = response.headers.get('content-type');
@@ -882,16 +1053,19 @@
                         this.currentCompanyId = data.company_id;
                         console.log(`📊 Loaded ${this.members.length} members for company ${data.company_id}`);
                         
-                        // Update header with company info if available
+                        // Update UI with company info
                         this.updateCompanyInfo(data.company_id);
                         
                         this.filterAndRenderMembers();
                         this.updateStats();
+                        this.updateDebugInfo();
                     } else {
-                        console.error('Failed to load members:', data.error);
-                        this.showError(`Failed to load members: ${data.error || 'Unknown error'}`);
+                        this.error = data.error || 'Unknown error';
+                        console.error('Failed to load members:', this.error);
+                        this.showError(`Failed to load members: ${this.error}`);
                     }
                 } catch (error) {
+                    this.error = error.message;
                     console.error('❌ Error loading members:', error);
                     this.showError(`Error loading members: ${error.message}`);
                 } finally {
@@ -899,12 +1073,67 @@
                 }
             }
 
+            showCompanySelectionError(errorData) {
+                const tableBody = document.getElementById('membersTableBody');
+                const emptyState = document.getElementById('emptyState');
+                
+                if (tableBody) {
+                    tableBody.style.display = 'table-row-group';
+                    if (emptyState) emptyState.style.display = 'none';
+                    
+                    const companiesList = errorData.available_companies
+                        .map(c => `<li><button onclick="memberDirectory.selectCompany('${c.company_id}')" class="btn-secondary" style="margin: 4px 0;">${c.company_id} (${c.member_count} members)</button></li>`)
+                        .join('');
+                    
+                    tableBody.innerHTML = `
+                        <tr>
+                            <td colspan="3" class="error-cell">
+                                <div style="text-align: center; padding: 40px;">
+                                    <div style="color: #fbbf24; font-size: 18px; margin-bottom: 12px;">🏢 Multiple Communities Detected</div>
+                                    <div style="color: #71717a; font-size: 14px; margin-bottom: 20px;">
+                                        This app supports multiple communities. Please select your community:
+                                    </div>
+                                    ${errorData.available_companies.length > 0 ? `
+                                        <div style="margin: 20px 0;">
+                                            <h4 style="color: #fff; margin-bottom: 12px;">Available Communities:</h4>
+                                            <ul style="list-style: none; padding: 0;">
+                                                ${companiesList}
+                                            </ul>
+                                        </div>
+                                    ` : ''}
+                                    <div style="margin-top: 20px; font-size: 12px; color: #666;">
+                                        Or add ?company=your_company_id to the URL
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }
+            }
+
+            selectCompany(companyId) {
+                console.log(`🏢 Selecting company: ${companyId}`);
+                
+                // Update URL with company parameter
+                const url = new URL(window.location);
+                url.searchParams.set('company', companyId);
+                window.history.pushState({}, '', url);
+                
+                // Store for future sessions
+                localStorage.setItem('last_company_id', companyId);
+                
+                // Reload members
+                this.loadMembers();
+            }
+
             updateCompanyInfo(companyId) {
                 if (companyId) {
-                    const headerTitle = document.querySelector('.header-title p');
-                    if (headerTitle) {
-                        headerTitle.textContent = `Connect with fellow community members • ${companyId}`;
+                    const subtitle = document.getElementById('companySubtitle');
+                    if (subtitle) {
+                        subtitle.textContent = `Connect with fellow community members • ${companyId}`;
                     }
+                    
+                    document.title = `Member Directory - ${companyId}`;
                 }
             }
 
@@ -914,12 +1143,23 @@
                     if (response.ok) {
                         const data = await response.json();
                         console.log('🏢 Available companies:', data.companies);
+                        
+                        document.getElementById('debugCompanies').textContent = 
+                            data.companies.map(c => `${c.company_id} (${c.member_count})`).join(', ') || 'None';
+                        
                         return data.companies;
                     }
                 } catch (error) {
                     console.warn('Could not load available companies:', error);
+                    document.getElementById('debugCompanies').textContent = 'Error loading';
                 }
                 return [];
+            }
+
+            clearCache() {
+                localStorage.removeItem('last_company_id');
+                console.log('🗑️ Cache cleared');
+                alert('Cache cleared! Refresh the page to auto-detect company again.');
             }
 
             setLoading(loading) {
@@ -958,6 +1198,9 @@
                                     <button onclick="memberDirectory.loadMembers()" class="btn-secondary">
                                         Retry
                                     </button>
+                                    <button onclick="memberDirectory.toggleDebugPanel()" class="btn-secondary" style="margin-left: 12px;">
+                                        Debug Info
+                                    </button>
                                 </div>
                             </td>
                         </tr>
@@ -976,7 +1219,9 @@
                     if (response.ok) {
                         const data = await response.json();
                         console.log('✅ Basic API working:', data);
-                        alert('✅ API connection successful! Try refreshing the page.');
+                        
+                        const msg = `✅ API Connection Successful!\n\nDetected Company: ${data.detected_company}\nServer: ${data.server}`;
+                        alert(msg);
                     } else {
                         console.error('❌ Basic API test failed:', response.status);
                         alert(`❌ API connection failed: ${response.status} ${response.statusText}`);

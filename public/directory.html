@@ -18,6 +18,14 @@
             line-height: 1.6;
         }
 
+        /* Support for dark mode when embedded in Whop */
+        @media (prefers-color-scheme: dark) {
+            body {
+                background: #0f172a;
+                color: #f1f5f9;
+            }
+        }
+
         .directory-container {
             max-width: 1200px;
             margin: 0 auto;
@@ -79,6 +87,13 @@
             margin-bottom: 30px;
         }
 
+        @media (prefers-color-scheme: dark) {
+            .search-filter {
+                background: #1e293b;
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+            }
+        }
+
         .search-input {
             width: 100%;
             padding: 15px 20px;
@@ -86,6 +101,20 @@
             border-radius: 8px;
             font-size: 1rem;
             transition: border-color 0.2s;
+            background: white;
+            color: #1e293b;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .search-input {
+                background: #374151;
+                border-color: #4b5563;
+                color: #f1f5f9;
+            }
+
+            .search-input::placeholder {
+                color: #9ca3af;
+            }
         }
 
         .search-input:focus {
@@ -107,6 +136,14 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
             transition: transform 0.2s, box-shadow 0.2s;
             border: 1px solid #f1f5f9;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .member-card {
+                background: #1e293b;
+                border-color: #374151;
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+            }
         }
 
         .member-card:hover {
@@ -135,15 +172,33 @@
             color: #1e293b;
         }
 
+        @media (prefers-color-scheme: dark) {
+            .member-name {
+                color: #f1f5f9;
+            }
+        }
+
         .member-email {
             color: #64748b;
             margin-bottom: 15px;
             font-size: 0.9rem;
         }
 
+        @media (prefers-color-scheme: dark) {
+            .member-email {
+                color: #94a3b8;
+            }
+        }
+
         .member-details {
             border-top: 1px solid #f1f5f9;
             padding-top: 15px;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .member-details {
+                border-color: #374151;
+            }
         }
 
         .detail-item {
@@ -159,9 +214,21 @@
             min-width: 80px;
         }
 
+        @media (prefers-color-scheme: dark) {
+            .detail-label {
+                color: #d1d5db;
+            }
+        }
+
         .detail-value {
             color: #6b7280;
             flex: 1;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .detail-value {
+                color: #9ca3af;
+            }
         }
 
         .joined-date {
@@ -189,6 +256,14 @@
             margin: 20px 0;
         }
 
+        @media (prefers-color-scheme: dark) {
+            .error {
+                background: #451a03;
+                border-color: #92400e;
+                color: #fbbf24;
+            }
+        }
+
         .no-members {
             text-align: center;
             padding: 60px 20px;
@@ -198,6 +273,40 @@
         .no-members h3 {
             font-size: 1.5rem;
             margin-bottom: 10px;
+        }
+
+        /* Company selector for multi-tenant support */
+        .company-selector {
+            background: #fef3c7;
+            border: 1px solid #f59e0b;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .company-selector {
+                background: #451a03;
+                border-color: #92400e;
+                color: #fbbf24;
+            }
+        }
+
+        .company-selector select {
+            margin: 8px;
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: 1px solid #d1d5db;
+            background: white;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .company-selector select {
+                background: #374151;
+                border-color: #4b5563;
+                color: #f1f5f9;
+            }
         }
 
         @media (max-width: 768px) {
@@ -236,10 +345,35 @@
         .embed-mode .header h1 {
             font-size: 1.8rem;
         }
+
+        /* Loading spinner */
+        .spinner {
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
     <div class="directory-container">
+        <!-- Company Selector (shown when multiple companies detected) -->
+        <div id="companySelector" class="company-selector" style="display: none;">
+            <h3>🏢 Select Your Community</h3>
+            <p>Multiple communities detected. Please select yours:</p>
+            <select id="companySelect">
+                <option value="">Loading communities...</option>
+            </select>
+        </div>
+
         <div class="header">
             <h1 id="groupName">Member Directory</h1>
             <p>Connect with fellow community members</p>
@@ -265,6 +399,7 @@
         </div>
 
         <div id="loadingState" class="loading">
+            <div class="spinner"></div>
             Loading members...
         </div>
 
@@ -288,17 +423,71 @@
                 this.filteredMembers = [];
                 this.companyId = this.getCompanyIdFromUrl();
                 this.apiBaseUrl = this.getApiBaseUrl();
+                this.availableCompanies = [];
                 
                 this.init();
             }
 
             getCompanyIdFromUrl() {
+                // Priority order for company detection:
+                // 1. URL parameter (?company=xyz)
+                // 2. URL path (/company/xyz or /xyz)
+                // 3. Stored in localStorage
+                // 4. Auto-detect
+
                 const urlParams = new URLSearchParams(window.location.search);
-                return urlParams.get('company') || 'demo';
+                const urlCompany = urlParams.get('company');
+                if (urlCompany) {
+                    this.storeCompanyId(urlCompany);
+                    return urlCompany;
+                }
+
+                // Check for company in path
+                const pathMatch = window.location.pathname.match(/\/(?:company\/)?([a-zA-Z0-9_-]+)$/);
+                if (pathMatch && pathMatch[1] !== 'directory') {
+                    const pathCompany = pathMatch[1];
+                    this.storeCompanyId(pathCompany);
+                    return pathCompany;
+                }
+
+                // Check localStorage
+                const storedCompany = this.getStoredCompanyId();
+                if (storedCompany) {
+                    return storedCompany;
+                }
+
+                return 'auto';
+            }
+
+            storeCompanyId(companyId) {
+                try {
+                    localStorage.setItem('whop_company_id', companyId);
+                    localStorage.setItem('whop_company_timestamp', Date.now().toString());
+                } catch (e) {
+                    console.warn('Could not store company ID:', e);
+                }
+            }
+
+            getStoredCompanyId() {
+                try {
+                    const companyId = localStorage.getItem('whop_company_id');
+                    const timestamp = localStorage.getItem('whop_company_timestamp');
+                    
+                    // Only use stored company if less than 24 hours old
+                    if (companyId && timestamp) {
+                        const age = Date.now() - parseInt(timestamp);
+                        if (age < 24 * 60 * 60 * 1000) {
+                            return companyId;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Could not retrieve stored company ID:', e);
+                }
+                return null;
             }
 
             getApiBaseUrl() {
-                // Auto-detect API base URL based on current domain
+                // Auto-detect API base URL
                 const currentDomain = window.location.origin;
                 return currentDomain.includes('localhost') ? 'http://localhost:3000' : currentDomain;
             }
@@ -310,38 +499,99 @@
             }
 
             async loadGroupConfig() {
-                try {
-                    const response = await fetch(`${this.apiBaseUrl}/api/group/${this.companyId}`);
-                    if (response.ok) {
-                        const data = await response.json();
-                        document.getElementById('groupName').textContent = 
-                            data.group.group_name + ' Directory';
+                if (this.companyId && this.companyId !== 'auto') {
+                    try {
+                        const response = await fetch(`${this.apiBaseUrl}/api/company/${this.companyId}`);
+                        if (response.ok) {
+                            const data = await response.json();
+                            if (data.success && data.company) {
+                                document.getElementById('groupName').textContent = 
+                                    `${data.company.company_id} Directory`;
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error loading group config:', error);
                     }
-                } catch (error) {
-                    console.error('Error loading group config:', error);
                 }
             }
 
             async loadMembers() {
                 try {
-                    const response = await fetch(`${this.apiBaseUrl}/api/directory/${this.companyId}`);
+                    console.log(`🔍 Loading members for company: ${this.companyId}`);
+                    
+                    const response = await fetch(`${this.apiBaseUrl}/api/members/${this.companyId}`, {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(this.companyId !== 'auto' && { 'x-company-id': this.companyId })
+                        }
+                    });
                     
                     if (!response.ok) {
-                        throw new Error('Failed to fetch members');
+                        const errorData = await response.json().catch(() => ({}));
+                        
+                        // Handle multi-tenant selection
+                        if (response.status === 400 && errorData.available_companies) {
+                            await this.showCompanySelector(errorData.available_companies);
+                            return;
+                        }
+                        
+                        throw new Error(errorData.error || `HTTP ${response.status}`);
                     }
 
                     const data = await response.json();
-                    this.members = data.members || [];
-                    this.filteredMembers = [...this.members];
                     
-                    this.updateStats();
-                    this.renderMembers();
-                    this.showContent();
+                    if (data.success) {
+                        this.members = data.members || [];
+                        this.companyId = data.company_id;
+                        this.filteredMembers = [...this.members];
+                        
+                        console.log(`✅ Loaded ${this.members.length} members`);
+                        
+                        this.updateStats();
+                        this.renderMembers();
+                        this.showContent();
+                        
+                        // Update page title
+                        document.title = `Member Directory - ${this.companyId}`;
+                    } else {
+                        throw new Error(data.error || 'Failed to load members');
+                    }
                     
                 } catch (error) {
                     console.error('Error loading members:', error);
-                    this.showError();
+                    this.showError(error.message);
                 }
+            }
+
+            async showCompanySelector(companies) {
+                this.availableCompanies = companies;
+                const selector = document.getElementById('companySelector');
+                const select = document.getElementById('companySelect');
+                
+                // Populate selector
+                select.innerHTML = '<option value="">Choose your community...</option>' +
+                    companies.map(c => 
+                        `<option value="${c.company_id}">${c.company_id} (${c.member_count} members)</option>`
+                    ).join('');
+                
+                selector.style.display = 'block';
+                this.hideAllStates();
+            }
+
+            selectCompany(companyId) {
+                if (!companyId) return;
+                
+                this.companyId = companyId;
+                this.storeCompanyId(companyId);
+                
+                // Update URL
+                const url = new URL(window.location);
+                url.searchParams.set('company', companyId);
+                window.history.pushState({}, '', url);
+                
+                // Hide selector and reload
+                document.getElementById('companySelector').style.display = 'none';
+                this.loadMembers();
             }
 
             updateStats() {
@@ -369,15 +619,19 @@
             }
 
             createMemberCard(member) {
-                const name = member.name || 'Anonymous Member';
+                const name = member.name || member.username || 'Anonymous Member';
                 const email = member.email || 'No email provided';
                 const avatar = name.charAt(0).toUpperCase();
                 const joinedDate = new Date(member.joined_at).toLocaleDateString();
                 
                 // Parse waitlist responses
-                const responses = member.waitlist_responses || {};
+                const responses = member.waitlist_responses || member.custom_fields || {};
                 const responseItems = Object.entries(responses)
-                    .filter(([key, value]) => value && value.toString().trim())
+                    .filter(([key, value]) => 
+                        value && 
+                        value.toString().trim() && 
+                        !['status', 'error', 'note'].includes(key)
+                    )
                     .map(([key, value]) => `
                         <div class="detail-item">
                             <span class="detail-label">${this.formatLabel(key)}:</span>
@@ -421,6 +675,11 @@
                 searchInput.addEventListener('input', (e) => {
                     this.filterMembers(e.target.value);
                 });
+
+                const companySelect = document.getElementById('companySelect');
+                companySelect.addEventListener('change', (e) => {
+                    this.selectCompany(e.target.value);
+                });
             }
 
             filterMembers(searchTerm) {
@@ -432,10 +691,12 @@
                     this.filteredMembers = this.members.filter(member => {
                         const name = (member.name || '').toLowerCase();
                         const email = (member.email || '').toLowerCase();
+                        const username = (member.username || '').toLowerCase();
                         const responses = JSON.stringify(member.waitlist_responses || {}).toLowerCase();
                         
                         return name.includes(term) || 
                                email.includes(term) || 
+                               username.includes(term) ||
                                responses.includes(term);
                     });
                 }
@@ -443,24 +704,27 @@
                 this.renderMembers();
             }
 
-            showContent() {
+            hideAllStates() {
                 document.getElementById('loadingState').style.display = 'none';
                 document.getElementById('errorState').style.display = 'none';
                 document.getElementById('noMembersState').style.display = 'none';
+                document.getElementById('membersGrid').style.display = 'none';
+            }
+
+            showContent() {
+                this.hideAllStates();
                 document.getElementById('membersGrid').style.display = 'grid';
             }
 
-            showError() {
-                document.getElementById('loadingState').style.display = 'none';
-                document.getElementById('membersGrid').style.display = 'none';
-                document.getElementById('noMembersState').style.display = 'none';
-                document.getElementById('errorState').style.display = 'block';
+            showError(message) {
+                this.hideAllStates();
+                const errorState = document.getElementById('errorState');
+                errorState.textContent = `Error: ${message}`;
+                errorState.style.display = 'block';
             }
 
             showNoMembers() {
-                document.getElementById('loadingState').style.display = 'none';
-                document.getElementById('membersGrid').style.display = 'none';
-                document.getElementById('errorState').style.display = 'none';
+                this.hideAllStates();
                 document.getElementById('noMembersState').style.display = 'block';
             }
         }
