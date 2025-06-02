@@ -439,7 +439,7 @@
     <div id="app" class="app-container" style="display: none;">
         <!-- Debug Panel -->
         <div id="debugPanel" class="debug-panel">
-            <h3>🔍 Auto-Detection Debug</h3>
+            <h3>🔍 Enhanced Auto-Detection Debug</h3>
             <div id="debugInfo" class="debug-info">Detecting company context...</div>
         </div>
 
@@ -567,12 +567,14 @@
     </div>
 
     <script>
-        class AutoDetectingWhopDirectory {
+        class EnhancedAutoDetectingWhopDirectory {
             constructor() {
                 this.members = [];
                 this.companyId = null;
+                this.detectedCompanyId = null;
                 this.debugMode = this.isDebugMode();
                 this.error = null;
+                this.detectionMethods = [];
                 
                 this.init();
             }
@@ -584,7 +586,7 @@
 
             async init() {
                 try {
-                    console.log('🚀 Initializing Auto-Detecting Whop Directory...');
+                    console.log('🚀 Initializing Enhanced Auto-Detecting Whop Directory...');
                     
                     if (this.debugMode) {
                         document.getElementById('debugPanel').classList.add('visible');
@@ -615,30 +617,44 @@
             }
 
             detectCompanyId() {
-                console.log('🔍 Auto-detecting company ID from Whop context...');
+                console.log('🔍 Enhanced auto-detection starting...');
+                this.detectionMethods = [];
                 
                 const methods = [
-                    () => this.getCompanyFromURL(),
-                    () => this.getCompanyFromReferer(),
-                    () => this.getCompanyFromParent()
+                    { name: 'URL Parameters', fn: () => this.getCompanyFromURL() },
+                    { name: 'Whop Referrer', fn: () => this.getCompanyFromReferer() },
+                    { name: 'Parent Window Context', fn: () => this.getCompanyFromParent() },
+                    { name: 'PostMessage API', fn: () => this.setupPostMessageListener() }
                 ];
 
                 for (const method of methods) {
                     try {
-                        const id = method();
-                        if (id) {
+                        const id = method.fn();
+                        this.detectionMethods.push({
+                            method: method.name,
+                            result: id || 'not found',
+                            success: !!id
+                        });
+                        
+                        if (id && !this.companyId) {
                             this.companyId = id;
-                            console.log(`✅ Company ID detected: ${id}`);
-                            this.updateDebugInfo(`Detected: ${id}`);
-                            return;
+                            console.log(`✅ Company ID detected via ${method.name}: ${id}`);
                         }
                     } catch (error) {
-                        console.warn('Detection method failed:', error);
+                        this.detectionMethods.push({
+                            method: method.name,
+                            result: `error: ${error.message}`,
+                            success: false
+                        });
+                        console.warn(`Detection method ${method.name} failed:`, error);
                     }
                 }
 
-                this.updateDebugInfo('Will auto-detect from server');
-                console.log('ℹ️ No company ID detected, will use server auto-detection');
+                this.updateDetectionInfo();
+                
+                if (!this.companyId) {
+                    console.log('ℹ️ No company ID detected locally, will use server auto-detection');
+                }
             }
 
             getCompanyFromURL() {
@@ -648,34 +664,23 @@
 
             getCompanyFromReferer() {
                 const referer = document.referrer;
-                return referer ? this.extractCompanyFromUrl(referer) : null;
-            }
+                console.log(`🔍 Analyzing referrer: ${referer}`);
+                
+                if (!referer) return null;
 
-            getCompanyFromParent() {
-                try {
-                    if (window !== window.parent && document.referrer) {
-                        return this.extractCompanyFromUrl(document.referrer);
-                    }
-                } catch (error) {
-                    // Expected cross-origin restriction
-                }
-                return null;
-            }
-
-            extractCompanyFromUrl(url) {
-                if (!url) return null;
-
+                // Enhanced Whop URL patterns
                 const patterns = [
-                    /\/company\/([^\/\?]+)/,
-                    /\/business\/([^\/\?]+)/,
-                    /^https?:\/\/([^\.]+)\.whop\.com/,
-                    /company_id=([^&\?]+)/,
-                    /\/(biz_[^\/\?]+)/
+                    { name: 'biz_ pattern', regex: /\/(biz_[a-zA-Z0-9]+)/ },
+                    { name: 'whop.com username', regex: /whop\.com\/([^\/]+)\/[^\/]+/ },
+                    { name: 'whop.com direct', regex: /whop\.com\/([^\/\?]+)/ },
+                    { name: 'company parameter', regex: /[?&]company=([^&]+)/ },
+                    { name: 'subdomain', regex: /^https?:\/\/([^\.]+)\.whop\.com/ }
                 ];
 
                 for (const pattern of patterns) {
-                    const match = url.match(pattern);
-                    if (match && match[1]) {
+                    const match = referer.match(pattern.regex);
+                    if (match && match[1] && match[1] !== 'www' && match[1] !== 'app') {
+                        console.log(`🎯 Extracted via ${pattern.name}: ${match[1]}`);
                         return match[1];
                     }
                 }
@@ -683,17 +688,91 @@
                 return null;
             }
 
-            updateDebugInfo(info) {
+            getCompanyFromParent() {
+                try {
+                    // Try to detect if we're in an iframe and get context
+                    if (window !== window.parent) {
+                        // We're embedded, try to get info from parent
+                        const parentUrl = document.referrer;
+                        if (parentUrl) {
+                            return this.extractCompanyFromUrl(parentUrl);
+                        }
+                    }
+                } catch (error) {
+                    // Expected cross-origin restriction
+                    console.log('Parent access restricted (normal for production)');
+                }
+                return null;
+            }
+
+            setupPostMessageListener() {
+                // Listen for company context from parent window
+                window.addEventListener('message', (event) => {
+                    console.log('📨 Received postMessage:', event.data);
+                    
+                    if (event.data && event.data.type === 'whop-context' && event.data.companyId) {
+                        console.log(`📨 Company ID from postMessage: ${event.data.companyId}`);
+                        this.companyId = event.data.companyId;
+                        this.updateDetectionInfo(`PostMessage: ${event.data.companyId}`);
+                        this.loadMembers();
+                    }
+                });
+
+                // Request company context from parent if we're embedded
+                if (window !== window.parent) {
+                    try {
+                        window.parent.postMessage({ 
+                            type: 'request-whop-context',
+                            origin: window.location.origin 
+                        }, '*');
+                        console.log('📤 Requested context from parent window');
+                    } catch (error) {
+                        console.log('Could not request context from parent');
+                    }
+                }
+
+                return null; // This method doesn't return immediately
+            }
+
+            extractCompanyFromUrl(url) {
+                if (!url) return null;
+
+                const patterns = [
+                    /\/(biz_[a-zA-Z0-9]+)/,
+                    /\/company\/([^\/\?]+)/,
+                    /\/business\/([^\/\?]+)/,
+                    /whop\.com\/([^\/]+)\/[^\/]+/,
+                    /whop\.com\/([^\/\?]+)/,
+                    /[?&]company=([^&]+)/,
+                    /^https?:\/\/([^\.]+)\.whop\.com/
+                ];
+
+                for (const pattern of patterns) {
+                    const match = url.match(pattern);
+                    if (match && match[1] && match[1] !== 'www' && match[1] !== 'app') {
+                        return match[1];
+                    }
+                }
+
+                return null;
+            }
+
+            updateDetectionInfo(info) {
                 if (this.debugMode) {
                     const debugInfo = document.getElementById('debugInfo');
                     if (debugInfo) {
+                        const methodsInfo = this.detectionMethods.map(m => 
+                            `${m.method}: ${m.result} ${m.success ? '✅' : '❌'}`
+                        ).join('<br>');
+                        
                         debugInfo.innerHTML = `
-                            ${info}<br>
-                            <small>
-                                URL: ${window.location.href}<br>
-                                Referrer: ${document.referrer || 'none'}<br>
-                                Context: ${window !== window.parent ? 'embedded (iframe)' : 'standalone'}
-                            </small>
+                            <strong>Detection Results:</strong><br>
+                            ${methodsInfo}<br><br>
+                            <strong>Final Company ID:</strong> ${this.companyId || 'none detected'}<br>
+                            <strong>URL:</strong> ${window.location.href}<br>
+                            <strong>Referrer:</strong> ${document.referrer || 'none'}<br>
+                            <strong>Context:</strong> ${window !== window.parent ? 'embedded (iframe)' : 'standalone'}<br>
+                            ${info ? `<br><strong>Latest:</strong> ${info}` : ''}
                         `;
                     }
                 }
@@ -702,7 +781,9 @@
             async loadMembers() {
                 try {
                     console.log('📡 Loading members...');
+                    this.updateDetectionInfo('Loading members...');
                     
+                    // Use detected company ID or fall back to auto-detection
                     const endpoint = this.companyId ? 
                         `/api/members/${this.companyId}` : 
                         '/api/members/auto';
@@ -711,10 +792,15 @@
                         'Content-Type': 'application/json'
                     };
 
+                    // Add all possible company headers
                     if (this.companyId) {
                         headers['x-whop-company-id'] = this.companyId;
                         headers['x-company-id'] = this.companyId;
+                        headers['x-business-id'] = this.companyId;
                     }
+
+                    console.log(`📡 Fetching from: ${endpoint}`);
+                    console.log('📡 Headers:', headers);
 
                     const response = await fetch(endpoint, { headers });
                     
@@ -728,11 +814,13 @@
                     if (data.success) {
                         this.members = data.members || [];
                         this.companyId = data.company_id;
+                        this.detectedCompanyId = data.company_id;
                         
                         console.log(`✅ Loaded ${this.members.length} members for ${data.company_id}`);
                         
                         this.updateUI(data);
                         this.showMembers();
+                        this.updateDetectionInfo(`✅ Success: ${data.company_id} (${this.members.length} members)`);
                     } else {
                         throw new Error(data.error || 'Failed to load members');
                     }
@@ -741,6 +829,7 @@
                     console.error('❌ Error loading members:', error);
                     this.error = error.message;
                     this.showError(error.message);
+                    this.updateDetectionInfo(`❌ Error: ${error.message}`);
                 }
             }
 
@@ -875,9 +964,11 @@
                 errorMessage.textContent = message;
                 errorDetails.innerHTML = this.debugMode ? `
                     <strong>Debug Info:</strong><br>
-                    Company ID: ${this.companyId || 'auto-detect'}<br>
+                    Detected Company: ${this.companyId || 'none'}<br>
+                    Server Company: ${this.detectedCompanyId || 'none'}<br>
                     URL: ${window.location.href}<br>
-                    Referrer: ${document.referrer || 'none'}
+                    Referrer: ${document.referrer || 'none'}<br>
+                    Detection Methods: ${this.detectionMethods.filter(m => m.success).length}/${this.detectionMethods.length} successful
                 ` : '';
                 
                 errorState.style.display = 'flex';
@@ -907,14 +998,14 @@
 
         // Initialize when DOM is ready
         document.addEventListener('DOMContentLoaded', () => {
-            window.memberDirectory = new AutoDetectingWhopDirectory();
+            window.memberDirectory = new EnhancedAutoDetectingWhopDirectory();
         });
 
         // If DOM is already loaded, initialize immediately
         if (document.readyState === 'loading') {
             // Wait for DOMContentLoaded
         } else {
-            window.memberDirectory = new AutoDetectingWhopDirectory();
+            window.memberDirectory = new EnhancedAutoDetectingWhopDirectory();
         }
     </script>
 </body>
