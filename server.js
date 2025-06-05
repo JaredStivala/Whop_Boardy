@@ -264,6 +264,9 @@ app.get('/api/members/:companyId', async (req, res) => {
         name: company.company_name,
         slug: company.company_slug
       },
+      company_id: company.company_id,
+      company_name: company.company_name,
+      company_slug: company.company_slug,
       members: result.rows,
       count: result.rows.length
     });
@@ -272,7 +275,7 @@ app.get('/api/members/:companyId', async (req, res) => {
   }
 });
 
-// Update /api/members/auto to include members in the response
+// Update /api/members/auto to include top-level company fields
 app.get('/api/members/auto', async (req, res) => {
   try {
     console.log('🔍 Auto-detection request received');
@@ -378,6 +381,9 @@ app.get('/api/members/auto', async (req, res) => {
         name: company.company_name,
         slug: company.company_slug
       },
+      company_id: company.company_id,
+      company_name: company.company_name,
+      company_slug: company.company_slug,
       members: result.rows,
       count: result.rows.length,
       message: 'Member directory ready'

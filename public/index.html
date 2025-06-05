@@ -419,21 +419,27 @@
         }
 
         function updateCompanyInfo(data) {
-            if (data.company_id && data.company_id !== 'auto') {
+            // Use data.company if present, otherwise fall back
+            let companyId = data.company_id;
+            let companyName = data.company_name;
+            let companySlug = data.company_slug;
+            if (data.company) {
+                companyId = data.company.id;
+                companyName = data.company.name;
+                companySlug = data.company.slug;
+            }
+            if (companyId && companyId !== 'auto') {
                 document.getElementById('company-info').style.display = 'block';
-                document.getElementById('company-name').textContent = data.company_name || data.company_id;
-                document.getElementById('company-id').textContent = data.company_id;
+                document.getElementById('company-name').textContent = companyName || companyId;
+                document.getElementById('company-id').textContent = companyId;
                 document.getElementById('detection-method').textContent = data.detection_method || 'auto-detect';
                 document.getElementById('company-message').textContent = data.message || 'Directory loaded successfully';
-                
                 if (data.directory_created) {
                     const date = new Date(data.directory_created).toLocaleDateString();
                     document.getElementById('directory-created').textContent = date;
                 } else {
                     document.getElementById('directory-created').textContent = 'Recently';
                 }
-                
-                // Show special message for new installations
                 if (data.is_new_installation) {
                     document.getElementById('company-message').innerHTML = 
                         '🎉 <strong>Welcome!</strong> Your member directory has been created. Members will appear here as they join your community.';
