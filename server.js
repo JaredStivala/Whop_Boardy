@@ -2,9 +2,20 @@ const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
 const path = require('path');
+const axios = require('axios');
+require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 3000;
+
+// Initialize Whop API client
+const whopApi = axios.create({
+  baseURL: process.env.WHOP_API_URL || 'https://api.whop.com/api/v2',
+  headers: {
+    'Authorization': `Bearer ${process.env.WHOP_API_KEY}`,
+    'Content-Type': 'application/json'
+  }
+});
 
 // Database connection
 const pool = new Pool({
@@ -58,6 +69,55 @@ async function initializeDatabase() {
 }
 
 initializeDatabase();
+
+// Function to sync members with Whop API
+async function syncMembersWithWhop(companyId) {
+  try {
+    console.log(`🔄 Syncing members for company: ${companyId}`);
+    
+    // Fetch members from Whop API
+    const response = await whopApi.get(`/experiences/${companyId}/users`);
+
+    if (!response || !response.data || !response.data.users) {
+      throw new Error('Invalid response from Whop API');
+    }
+
+    const whopMembers = response.data.users.nodes;
+    console.log(`📥 Fetched ${whopMembers.length} members from Whop`);
+
+    // Update or insert members in database
+    for (const member of whopMembers) {
+      await pool.query(`
+        INSERT INTO whop_members (
+          user_id,
+          company_id,
+          username,
+          name,
+          profile_picture,
+          updated_at
+        ) VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+        ON CONFLICT (user_id, company_id) 
+        DO UPDATE SET
+          username = EXCLUDED.username,
+          name = EXCLUDED.name,
+          profile_picture = EXCLUDED.profile_picture,
+          updated_at = CURRENT_TIMESTAMP
+      `, [
+        member.id,
+        companyId,
+        member.username,
+        member.name,
+        member.profilePicture?.sourceUrl || null
+      ]);
+    }
+
+    console.log(`✅ Successfully synced ${whopMembers.length} members`);
+    return whopMembers.length;
+  } catch (error) {
+    console.error('❌ Error syncing members:', error);
+    throw error;
+  }
+}
 
 // FIXED: Enhanced company ID extraction that actually works with Whop URLs
 function extractCompanyId(req) {
@@ -232,6 +292,15 @@ app.get('/api/members/auto', async (req, res) => {
         // Fetch the created company
         company = await findCompanyInDatabase(companyId);
         
+        // Sync members for the new company
+        try {
+          const memberCount = await syncMembersWithWhop(companyId);
+          console.log(`✅ Synced ${memberCount} members for new company`);
+        } catch (syncError) {
+          console.error('⚠️ Warning: Failed to sync members for new company:', syncError);
+          // Continue even if sync fails - we'll try again later
+        }
+        
       } catch (createError) {
         console.error('❌ Error creating directory:', createError);
         return res.status(500).json({
@@ -251,50 +320,39 @@ app.get('/api/members/auto', async (req, res) => {
       });
     }
     
-    const actualCompanyId = company.company_id;
-    console.log(`✅ Using directory: ${actualCompanyId} (${company.company_name})`);
+    // Update last activity
+    await pool.query(`
+      UPDATE whop_companies 
+      SET last_activity = CURRENT_TIMESTAMP 
+      WHERE company_id = $1
+    `, [company.company_id]);
     
-    // Get members for this specific company
-    const result = await pool.query(`
-      SELECT 
-        m.id, m.user_id, m.membership_id, m.email, m.name, m.username, 
-        m.custom_fields, m.joined_at, m.status, m.updated_at
-      FROM whop_members m
-      WHERE m.company_id = $1 AND m.status = 'active'
-      ORDER BY m.joined_at DESC
-    `, [actualCompanyId]);
-
-    const members = result.rows.map(member => ({
-      ...member,
-      custom_fields: typeof member.custom_fields === 'string' 
-        ? JSON.parse(member.custom_fields) 
-        : member.custom_fields || {}
-    }));
-
-    console.log(`✅ Found ${members.length} members for ${actualCompanyId}`);
-
-    res.json({
+    // Sync members for existing company
+    try {
+      const memberCount = await syncMembersWithWhop(company.company_id);
+      console.log(`✅ Synced ${memberCount} members for existing company`);
+    } catch (syncError) {
+      console.error('⚠️ Warning: Failed to sync members:', syncError);
+      // Continue even if sync fails - we'll try again later
+    }
+    
+    // Return success response
+    return res.json({
       success: true,
       company: {
         id: company.company_id,
         name: company.company_name,
         slug: company.company_slug
       },
-      members: members,
-      count: members.length,
-      is_new_directory: members.length === 0,
-      debug: {
-        extracted_id: extractedId,
-        company_id: actualCompanyId,
-        member_count: members.length
-      }
+      message: 'Member directory ready'
     });
-
+    
   } catch (error) {
     console.error('❌ Error in auto-detection:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      error: error.message
+      error: 'Internal server error',
+      details: error.message
     });
   }
 });
@@ -715,6 +773,51 @@ async function handleMembershipInvalid(companyId, data) {
     console.error('❌ Error removing member:', error);
   }
 }
+
+// Manual member synchronization endpoint
+app.post('/api/members/sync/:companyId', async (req, res) => {
+  try {
+    const { companyId } = req.params;
+    
+    if (!companyId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Company ID is required'
+      });
+    }
+    
+    // Verify company exists
+    const company = await findCompanyInDatabase(companyId);
+    if (!company) {
+      return res.status(404).json({
+        success: false,
+        error: 'Company not found'
+      });
+    }
+    
+    // Sync members
+    const memberCount = await syncMembersWithWhop(companyId);
+    
+    return res.json({
+      success: true,
+      message: `Successfully synced ${memberCount} members`,
+      company: {
+        id: company.company_id,
+        name: company.company_name,
+        slug: company.company_slug
+      },
+      member_count: memberCount
+    });
+    
+  } catch (error) {
+    console.error('❌ Error in manual sync:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to sync members',
+      details: error.message
+    });
+  }
+});
 
 app.listen(port, () => {
   console.log('');
