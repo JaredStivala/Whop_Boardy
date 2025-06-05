@@ -360,14 +360,27 @@
                 console.log('🚀 Loading members with auto-detection...');
                 showLoading();
                 
-                // Always start with auto-detection
-                const response = await fetch('/api/members/auto', {
+                // Try to detect companyId from URL (?company= or /company/ or /biz_)
+                let companyId = null;
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.get('company')) {
+                    companyId = urlParams.get('company');
+                } else {
+                    const pathMatch = window.location.pathname.match(/\/company\/([^\/]+)/);
+                    if (pathMatch) companyId = pathMatch[1];
+                    const whopMatch = window.location.pathname.match(/\/(biz_[^\/]+)/);
+                    if (whopMatch) companyId = whopMatch[1];
+                }
+                let endpoint = '/api/members/auto';
+                if (companyId) {
+                    endpoint = `/api/members/${companyId}`;
+                }
+                const response = await fetch(endpoint, {
                     method: 'GET',
                     headers: {
                         'Cache-Control': 'no-cache'
                     }
                 });
-                
                 const data = await response.json();
                 lastResponseData = data;
                 
@@ -378,8 +391,8 @@
                 }
 
                 // Update current company ID if detected
-                if (data.company_id && data.company_id !== 'auto') {
-                    currentCompanyId = data.company_id;
+                if (data.company && data.company.id) {
+                    currentCompanyId = data.company.id;
                     console.log(`✅ Company ID updated to: ${currentCompanyId}`);
                 }
 

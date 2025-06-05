@@ -242,7 +242,37 @@ async function findCompanyInDatabase(identifier) {
   }
 }
 
-// FIXED: Auto-detection that creates directories for new communities
+// Endpoint to get members for a specific company
+app.get('/api/members/:companyId', async (req, res) => {
+  const { companyId } = req.params;
+  if (!companyId) {
+    return res.status(400).json({ success: false, error: 'Company ID is required' });
+  }
+  try {
+    const company = await findCompanyInDatabase(companyId);
+    if (!company) {
+      return res.status(404).json({ success: false, error: 'Company not found' });
+    }
+    const result = await pool.query(
+      `SELECT * FROM whop_members WHERE company_id = $1 AND status = 'active' ORDER BY joined_at DESC`,
+      [company.company_id]
+    );
+    return res.json({
+      success: true,
+      company: {
+        id: company.company_id,
+        name: company.company_name,
+        slug: company.company_slug
+      },
+      members: result.rows,
+      count: result.rows.length
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Update /api/members/auto to include members in the response
 app.get('/api/members/auto', async (req, res) => {
   try {
     console.log('🔍 Auto-detection request received');
@@ -336,7 +366,11 @@ app.get('/api/members/auto', async (req, res) => {
       // Continue even if sync fails - we'll try again later
     }
     
-    // Return success response
+    // Get members for this specific company
+    const result = await pool.query(
+      `SELECT * FROM whop_members WHERE company_id = $1 AND status = 'active' ORDER BY joined_at DESC`,
+      [company.company_id]
+    );
     return res.json({
       success: true,
       company: {
@@ -344,6 +378,8 @@ app.get('/api/members/auto', async (req, res) => {
         name: company.company_name,
         slug: company.company_slug
       },
+      members: result.rows,
+      count: result.rows.length,
       message: 'Member directory ready'
     });
     
